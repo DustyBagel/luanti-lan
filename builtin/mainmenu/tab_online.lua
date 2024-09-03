@@ -23,9 +23,11 @@ local function get_sorted_servers()
 		incompatible = {}
 	}
 
-	--Special thanks to proller <proller@gmail.com> for letting use lan.cpp/h.
+	local merged_serverlist = table.copy(serverlistmgr.servers)
+
+	-- Special thanks to proller <proller@gmail.com> for letting use lan.cpp/h
+	-- that's where core.get_lan_servers and core.ask_lan_servers are defined.
 	if minetest.settings:get_bool("serverlist_lan") then
-		merged_serverlist = table.copy(serverlistmgr.servers)
 		for _, server in ipairs(core.get_lan_servers()) do
 			server.is_compatible = is_server_protocol_compat(server.proto_min, server.proto_max)
 			server.is_local = true
