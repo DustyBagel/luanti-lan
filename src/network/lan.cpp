@@ -1,22 +1,20 @@
 /*
-Copyright (C) 2016 proller <proler@gmail.com>
-*/
+Minetest
+Copyright (C) 2024 proller <proler@gmail.com>
 
-/*
-This file is part of Freeminer.
-
-Freeminer is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU Lesser General Public License as published by
+the Free Software Foundation; either version 2.1 of the License, or
 (at your option) any later version.
 
-Freeminer  is distributed in the hope that it will be useful,
+This program is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
+GNU Lesser General Public License for more details.
 
-You should have received a copy of the GNU General Public License
-along with Freeminer.  If not, see <http://www.gnu.org/licenses/>.
+You should have received a copy of the GNU Lesser General Public License along
+with this program; if not, write to the Free Software Foundation, Inc.,
+51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
 #include "network/lan.h"
@@ -69,7 +67,7 @@ typedef int socklen_t;
 typedef int socket_t;
 #endif
 
-const char* adv_multicast_addr = "224.1.1.1";
+const char* adv_multicast_addr = "224.0.0.1";
 const static unsigned short int adv_port = 29998;
 static std::string ask_str;
 
@@ -163,7 +161,7 @@ void lan_adv::send_string(const std::string &str)
 		addr.sin_port = htons(adv_port);
 		UDPSocket socket_send(false);
 
-		// Full discloser, the use of inet_proto and the mreq stucture 
+		// Full discloser, the use of inet_proto and the mreq stucture
 		// were suggested by ai.
 
 		inet_pton(AF_INET, adv_multicast_addr, &(addr.sin_addr));
@@ -172,7 +170,6 @@ void lan_adv::send_string(const std::string &str)
 
 		mreq.imr_multiaddr.s_addr = inet_addr(adv_multicast_addr);
 		mreq.imr_interface.s_addr = htonl(INADDR_ANY);
-		
 
 		setsockopt(socket_send.GetHandle(), IPPROTO_IP, IP_ADD_MEMBERSHIP,
 				(const char *)&mreq, sizeof(mreq));
@@ -191,7 +188,7 @@ void lan_adv::serve(unsigned short port)
 {
 	server_port = port;
 	stop();
-	start(); 
+	start();
 }
 
 void *lan_adv::run()

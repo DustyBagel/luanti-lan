@@ -413,14 +413,15 @@ Server::~Server()
 		m_unsent_map_edit_queue.pop();
 	}
 
+	// Maybe this should be moved to the destructor in lan_adv (lan.cpp).
 	if (g_settings->getBool("serverlist_lan")) {
 		lan_adv_server.stop();
-
+		verbosestream << "[lan_adv] Waiting for lan_adv thread to stop ..." << std::endl;
 		while (lan_adv_server.isRunning()) {
-			// Wait until the lan_adv_server thread has finished.
-			// This is so that its thread destructor doesn't kill the thread
-			// before it sends the 'shutdown' command to remove this server's
-			// server info from the serverlist of local clients. 
+			/* Wait until the lan_adv_server thread has finished.
+			This is so that its thread destructor doesn't kill the thread
+			before it sends the 'shutdown' command to remove this server's
+			server info from the serverlists of local clients. */
 		}
 	}
 }
