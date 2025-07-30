@@ -34,8 +34,8 @@ bool lan_fresh() {
 	lan_adv_client.fresh = false;
 	return result;
 }
-#if USE_CURL
-void sendAnnounce(AnnounceAction action,
+
+Json::Value get_server_data(AnnounceAction action
 		const u16 port,
 		const std::vector<std::string> &clients_names,
 		const double uptime,
@@ -46,7 +46,6 @@ void sendAnnounce(AnnounceAction action,
 		const std::vector<ModSpec> &mods,
 		bool dedicated)
 {
-	static const char *aa_names[] = {"start", "update", "delete"};
 	Json::Value server;
 	server["action"] = aa_names[action];
 	server["port"] = port;
@@ -91,6 +90,23 @@ void sendAnnounce(AnnounceAction action,
 		if (lag)
 			server["lag"] = lag;
 	}
+	return server;
+}
+#if USE_CURL
+void sendAnnounce(AnnounceAction action,
+		const u16 port,
+		const std::vector<std::string> &clients_names,
+		const double uptime,
+		const u32 game_time,
+		const float lag,
+		const std::string &gameid,
+		const std::string &mg_name,
+		const std::vector<ModSpec> &mods,
+		bool dedicated)
+{
+	static const char *aa_names[] = {"start", "update", "delete"};
+
+	Json::Value server = get_server_data();
 
 	if (action == AA_START) {
 		actionstream << "Announcing " << aa_names[action] << " to " <<
