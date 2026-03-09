@@ -19,13 +19,16 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 
 #pragma once
 
-#include "json/json.h"
+
 #include <map>
+#include <unordered_map>
 #include <shared_mutex>
 #include <string>
 #include <atomic>
+#include "irrTypes.h"
+#include "json/json.h"
 #include "threading/thread.h"
-
+#include "network/address.h"
 
 class lan_adv : public Thread
 {
@@ -34,9 +37,8 @@ public:
 
 	lan_adv();
 	void ask();
-	void send_string(const std::string &str);
 
-	void serve(unsigned short port);
+	void serve(Address addr, u16 proto_min, u16 proto_max);
 
 	std::map<std::string, Json::Value> collected;
 	std::shared_mutex mutex;
@@ -44,7 +46,10 @@ public:
 	std::atomic_bool fresh;
 	std::atomic_int clients_num;
 
+	Json::Value server_data;
 private:
+	std::string address = "";
 	unsigned short server_port = 0;
-	int socket;
+	int socket = -1;
+	std::unordered_map<std::string, Json::Value> servers = {};
 };

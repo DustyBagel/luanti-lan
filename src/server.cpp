@@ -54,6 +54,7 @@
 
 // Network
 #include "network/connection.h"
+#include "network/lan.h"
 #include "network/networkpacket.h"
 #include "network/networkprotocol.h"
 #include "network/serveropcodes.h"
@@ -70,7 +71,6 @@
 #include "gameparams.h"
 #include "particles.h"
 #include "gettext.h"
-#include "network/lan.h"
 #include "util/tracy_wrapper.h"
 
 #include <iostream>
@@ -603,7 +603,11 @@ void Server::start()
 	m_thread->start();
 
 	if (!m_simple_singleplayer_mode && g_settings->getBool("serverlist_lan")) {
-		lan_adv_server.serve(m_bind_addr.getPort());
+		lan_adv_server.serve(
+			m_bind_addr,
+			getProtocolVersionMin(),
+			getProtocolVersionMax()
+		);
 	};
 
 	// ASCII art for the win!

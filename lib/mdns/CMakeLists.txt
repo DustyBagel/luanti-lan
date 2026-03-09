@@ -36,7 +36,7 @@ if(${CMAKE_VERSION} VERSION_LESS 3.14)
     COMPATIBILITY SameMajorVersion)
 else()
   write_basic_package_version_file(
-    "${PROJECT_NAME}ConfigVersion.cmake"
+    "ConfigVersion.cmake"
     VERSION ${PROJECT_VERSION}
     COMPATIBILITY SameMajorVersion
     ARCH_INDEPENDENT)
@@ -44,7 +44,7 @@ endif()
 
 configure_package_config_file(
   "${PROJECT_SOURCE_DIR}/Config.cmake.in"
-  "${PROJECT_BINARY_DIR}/${PROJECT_NAME}Config.cmake" INSTALL_DESTINATION
+  "${PROJECT_BINARY_DIR}/Config.cmake" INSTALL_DESTINATION
   ${CMAKE_INSTALL_DATAROOTDIR}/cmake/${PROJECT_NAME})
 
 install(

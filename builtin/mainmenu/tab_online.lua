@@ -12,10 +12,11 @@ local function get_sorted_servers()
 
 	local serverlist = table.copy(serverlistmgr.servers)
 
-	if minetest.settings:get_bool("serverlist_lan") then
+	if minetest.settings:get_bool("serverlist_lan", true) then
 		local lan_servers = core.get_lan_servers()
 
 		for _, server in ipairs(lan_servers) do
+			print("Found LAN server: " .. dump(server))
 			server.is_compatible = is_server_protocol_compat(server.proto_min, server.proto_max)
 			server.is_local = true
 			table.insert(serverlist, server)
