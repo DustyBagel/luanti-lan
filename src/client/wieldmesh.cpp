@@ -8,6 +8,7 @@
 #include "inventory.h"
 #include "client.h"
 #include "itemdef.h"
+#include "node_visuals.h"
 #include "nodedef.h"
 #include "mesh.h"
 #include "content_mapblock.h"
@@ -15,7 +16,6 @@
 #include "client/meshgen/collector.h"
 #include "client/tile.h"
 #include "client/texturesource.h"
-#include "log.h"
 #include "util/numeric.h"
 #include <map>
 #include <IMeshManipulator.h>
@@ -121,7 +121,7 @@ static scene::IMesh *createExtrusionMesh(int resolution_x, int resolution_y)
 }
 
 static video::ITexture *extractTexture(const TileDef &def, const TileLayer &layer,
-	ITextureSource *tsrc)
+		ITextureSource *tsrc, bool fallback = true)
 {
 	// If animated take first frame from tile layer (so we don't have to handle
 	// that manually), otherwise look up by name.
@@ -132,7 +132,8 @@ static video::ITexture *extractTexture(const TileDef &def, const TileLayer &laye
 	}
 	if (!def.name.empty())
 		return tsrc->getTextureForMesh(def.name);
-	return nullptr;
+
+	return fallback ? tsrc->getTextureForMesh("no_texture.png") : nullptr;
 }
 
 void getAdHocNodeShader(video::SMaterial &mat, IShaderSource *shdsrc,
@@ -150,7 +151,9 @@ void getAdHocNodeShader(video::SMaterial &mat, IShaderSource *shdsrc,
 	if (mat.getTexture(0))
 		array_texture = mat.getTexture(0)->getType() == video::ETT_2D_ARRAY;
 
-	u32 shader_id = shdsrc->getShader(shader, type, NDT_NORMAL, array_texture);
+	ShaderFeatures features;
+	features.array_texture = array_texture;
+	u32 shader_id = shdsrc->getShader(shader, type, NDT_NORMAL, features);
 	mat.MaterialType = shdsrc->getShaderInfo(shader_id).material;
 }
 
@@ -275,7 +278,7 @@ void WieldMeshSceneNode::setExtruded(const TileDef &d0, const TileLayer &l0,
 		v3f wield_scale, ITextureSource *tsrc)
 {
 	setExtruded(extractTexture(d0, l0, tsrc),
-		extractTexture(d1, l1, tsrc), wield_scale);
+			extractTexture(d1, l1, tsrc, false), wield_scale);
 	// Add color
 	m_buffer_info.clear();
 	m_buffer_info.emplace_back(0, l0);
@@ -372,7 +375,7 @@ static scene::SMesh *createGenericNodeMesh(Client *client, MapNode n,
 			buf->append(&p.vertices[0], p.vertices.size(),
 					&p.indices[0], p.indices.size());
 
-			// note: material type is left unset, overriden later
+			// note: material type is left unset, overridden later
 			p.layer.applyMaterialOptions(buf->Material, layer);
 
 			mesh->addMeshBuffer(buf.get());
@@ -430,6 +433,7 @@ void WieldMeshSceneNode::setItem(const ItemStack &item, Client *client, bool che
 	const NodeDefManager *ndef = client->getNodeDefManager();
 	const ItemDefinition &def = item.getDefinition(idef);
 	const ContentFeatures &f = ndef->get(def.name);
+	const NodeVisuals &v = *(f.visuals);
 
 	{
 		// Initialize material type used by setExtruded
@@ -504,13 +508,13 @@ void WieldMeshSceneNode::setItem(const ItemStack &item, Client *client, bool che
 			v3f wscale = wield_scale;
 			if (f.drawtype == NDT_FLOWINGLIQUID)
 				wscale.Z *= 0.1f;
-			setExtruded(f.tiledef[0], f.tiles[0].layers[0],
-				f.tiledef_overlay[0], f.tiles[0].layers[1], wscale, tsrc);
+			setExtruded(f.tiledef[0], v.tiles[0].layers[0],
+				f.tiledef_overlay[0], v.tiles[0].layers[1], wscale, tsrc);
 			break;
 		}
 		case NDT_PLANTLIKE_ROOTED: {
 			// use the plant tile
-			setExtruded(f.tiledef_special[0], f.special_tiles[0].layers[0],
+			setExtruded(f.tiledef_special[0], v.special_tiles[0].layers[0],
 				TileDef(), TileLayer(), wield_scale, tsrc);
 			break;
 		}
@@ -646,6 +650,7 @@ void createItemMesh(Client *client, const ItemDefinition &def,
 	IShaderSource *shdsrc = client->getShaderSource();
 	const NodeDefManager *ndef = client->getNodeDefManager();
 	const ContentFeatures &f = ndef->get(def.name);
+	const NodeVisuals &v = *(f.visuals);
 	assert(result);
 
 	FATAL_ERROR_IF(!g_extrusion_mesh_cache, "Extrusion mesh cache is not yet initialized");
@@ -678,11 +683,11 @@ void createItemMesh(Client *client, const ItemDefinition &def,
 	} else if (def.type == ITEM_NODE) {
 		switch (f.drawtype) {
 		case NDT_PLANTLIKE: {
-			const TileLayer &l0 = f.tiles[0].layers[0];
-			const TileLayer &l1 = f.tiles[0].layers[1];
+			const TileLayer &l0 = v.tiles[0].layers[0];
+			const TileLayer &l1 = v.tiles[0].layers[1];
 			mesh = getExtrudedMesh(
 				extractTexture(f.tiledef[0], l0, tsrc),
-				extractTexture(f.tiledef[1], l1, tsrc));
+				extractTexture(f.tiledef[1], l1, tsrc, false));
 			// Add color
 			result->buffer_info.emplace_back(0, l0);
 			result->buffer_info.emplace_back(1, l1);
@@ -690,7 +695,7 @@ void createItemMesh(Client *client, const ItemDefinition &def,
 		}
 		case NDT_PLANTLIKE_ROOTED: {
 			// Use the plant tile
-			const TileLayer &l0 = f.special_tiles[0].layers[0];
+			const TileLayer &l0 = v.special_tiles[0].layers[0];
 			mesh = getExtrudedMesh(
 				extractTexture(f.tiledef_special[0], l0, tsrc)
 			);
@@ -709,6 +714,7 @@ void createItemMesh(Client *client, const ItemDefinition &def,
 			break;
 		}
 		}
+		FATAL_ERROR_IF(!mesh, ("mesh creation failed for " + def.name).c_str());
 
 		for (u32 i = 0; i < mesh->getMeshBufferCount(); ++i) {
 			scene::IMeshBuffer *buf = mesh->getMeshBuffer(i);

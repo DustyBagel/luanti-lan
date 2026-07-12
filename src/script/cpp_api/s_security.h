@@ -31,8 +31,10 @@ public:
 	void initializeSecurity();
 #if CHECK_CLIENT_BUILD()
 	void initializeSecurityClient();
+	void initializeSecuritySSCSM();
 #else
-	inline void initializeSecurityClient() { assert(0); }
+	void initializeSecurityClient() { assert(0); }
+	void initializeSecuritySSCSM() { assert(0); }
 #endif
 
 	// Checks if the Lua state has been secured
@@ -42,8 +44,11 @@ public:
 
 	/// Loads a string as Lua code safely (doesn't allow bytecode).
 	static bool safeLoadString(lua_State *L, std::string_view code, const char *chunk_name);
+	/// Same as above, but removes shebangs.
+	static bool safeLoadFileContent(lua_State *L, std::string_view code, const char *chunk_name);
 	/// Loads a file as Lua code safely (doesn't allow bytecode).
 	/// @warning path is not validated in any way
+	/// Prints warnings for modified builtin files.
 	static bool safeLoadFile(lua_State *L, const char *path, const char *display_name = nullptr);
 
 	/**
@@ -91,7 +96,7 @@ protected:
 
 private:
 	int getThread(lua_State *L);
-	// sets the enviroment to the table thats on top of the stack
+	// sets the environment to the table that's on top of the stack
 	void setLuaEnv(lua_State *L, int thread);
 	// creates an empty Lua environment
 	void createEmptyEnv(lua_State *L);
@@ -115,6 +120,9 @@ private:
 	static int sl_os_rename(lua_State *L);
 	static int sl_os_remove(lua_State *L);
 	static int sl_os_setlocale(lua_State *L);
+
+	// reduced precision (for SSCSM)
+	static int sl_os_clock(lua_State *L);
 
 	static int sl_debug_getinfo(lua_State *L);
 };

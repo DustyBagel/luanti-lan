@@ -53,6 +53,11 @@ core.features = {
 	generate_decorations_biomes = true,
 	chunksize_vector = true,
 	item_inventory_image_animation = true,
+	get_modnames_load_order = true,
+	set_camera_resettable = true,
+	hud_hideable_field = true,
+	compress_raw_deflate = true,
+	get_all_craft_recipes_fuel = true,
 }
 
 function core.has_feature(arg)

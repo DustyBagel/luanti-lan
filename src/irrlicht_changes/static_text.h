@@ -7,23 +7,15 @@
 #pragma once
 
 #include "IGUIStaticText.h"
-#include "irrArray.h"
 
-#include "log.h"
-
-#include <vector>
-
+#include "dimension2d.h"
 #include "util/enriched_string.h"
-#include "config.h"
 #include <IGUIEnvironment.h>
 
 
 namespace gui
 {
-
-	const EGUI_ELEMENT_TYPE EGUIET_ENRICHED_STATIC_TEXT = (EGUI_ELEMENT_TYPE)(0x1000);
-
-	class StaticText : public IGUIStaticText
+	class StaticText final : public IGUIStaticText
 	{
 	public:
 
@@ -135,11 +127,16 @@ namespace gui
 		//! Sets the new caption of this element.
 		virtual void setText(const wchar_t* text);
 
+		//! Returns the text dimensions when drawn
+		core::dimension2du getTextDimensions() const;
+
 		//! Returns the height of the text in pixels when it is drawn.
-		virtual s32 getTextHeight() const;
+		virtual s32 getTextHeight() const
+		{ return getTextDimensions().Height; }
 
 		//! Returns the width of the current text, in the current font
-		virtual s32 getTextWidth() const;
+		virtual s32 getTextWidth() const
+		{ return getTextDimensions().Width; }
 
 		//! Updates the absolute position, splits text if word wrap is enabled
 		virtual void updateAbsolutePosition();
@@ -156,10 +153,6 @@ namespace gui
 		virtual bool isRightToLeft() const;
 
 		virtual bool hasType(EGUI_ELEMENT_TYPE t) const {
-			return (t == EGUIET_ENRICHED_STATIC_TEXT) || (t == EGUIET_STATIC_TEXT);
-		};
-
-		virtual bool hasType(EGUI_ELEMENT_TYPE t) {
 			return (t == EGUIET_ENRICHED_STATIC_TEXT) || (t == EGUIET_STATIC_TEXT);
 		};
 
@@ -181,7 +174,7 @@ namespace gui
 		gui::IGUIFont* LastBreakFont; // stored because: if skin changes, line break must be recalculated.
 
 		EnrichedString ColoredText;
-		std::vector<EnrichedString> BrokenText;
+		EnrichedString BrokenText;
 	};
 
 

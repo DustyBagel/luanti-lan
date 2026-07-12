@@ -10,7 +10,6 @@
 #include "pathfinder.h"
 #include "map.h"
 #include "nodedef.h"
-#include "irrlicht_changes/printing.h"
 
 //#define PATHFINDER_DEBUG
 //#define PATHFINDER_CALC_TIME
@@ -68,7 +67,7 @@ public:
 	bool valid = false;              /**< movement is possible         */
 	int  value = 0;                  /**< cost of movement             */
 	int  y_change = 0;               /**< change of y position of movement */
-	bool updated = false;            /**< this cost has ben calculated */
+	bool updated = false;            /**< this cost has been calculated */
 
 };
 

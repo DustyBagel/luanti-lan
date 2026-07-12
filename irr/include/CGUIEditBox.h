@@ -139,7 +139,7 @@ public:
 	bool acceptsIME() override { return isEnabled() && IsWritable; };
 
 	//! set true if this EditBox is writable
-	void setWritable(bool writable) { IsWritable = writable; }
+	void setWritable(bool writable) { IsWritable = writable; setTabStop(writable); }
 
 protected:
 	//! Breaks the single text line.
@@ -163,19 +163,19 @@ protected:
 	//! update the vertical scrollBar (visibilty & position)
 	void updateVScrollBar();
 
+	//! Ctrl+Left, Ctrl+Del uses entire words. This gets the indices.
+	s32 getCtrlKeyWord(s32 startpos, s8 dir);
 	bool processKey(const SEvent &event);
 	//! KEY_LEFT / KEY_RIGHT inputs
 	void processKeyLR(const SEvent::SKeyInput &input, s32 &new_mark_begin,
 			s32 &new_mark_end);
-
-	bool onKeyUp(const SEvent &event, s32 &mark_begin, s32 &mark_end);
-	bool onKeyDown(const SEvent &event, s32 &mark_begin, s32 &mark_end);
+	//! Up, Down, Page Up, Page Down
+	bool onKeyUpDown(const SEvent::SKeyInput &input, s32 &mark_begin,
+			s32 &mark_end, u32 lines_max);
 	void onKeyControlC(const SEvent &event);
 	bool onKeyControlX(const SEvent &event, s32 &mark_begin, s32 &mark_end);
 	bool onKeyControlV(const SEvent &event, s32 &mark_begin, s32 &mark_end);
-	bool onKeyBack();
-	//! delete current selection or next char
-	bool onKeyDelete();
+	bool onKeyBackDelete(const SEvent::SKeyInput &input);
 
 	bool processMouse(const SEvent &event);
 	s32 getCursorPos(s32 x, s32 y);

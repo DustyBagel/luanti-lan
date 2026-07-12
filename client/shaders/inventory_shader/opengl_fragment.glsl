@@ -4,11 +4,11 @@
 	uniform sampler2D baseTexture;
 #endif
 
-VARYING_ vec3 vNormal;
-VARYING_ vec3 vPosition;
 CENTROID_ VARYING_ lowp vec4 varColor;
 CENTROID_ VARYING_ mediump vec2 varTexCoord;
-CENTROID_ VARYING_ float varTexLayer; // actually int
+#ifdef USE_ARRAY_TEXTURE
+flat VARYING_ uint varTexLayer;
+#endif
 
 
 void main(void)
@@ -16,7 +16,7 @@ void main(void)
 	vec2 uv = varTexCoord.st;
 
 #ifdef USE_ARRAY_TEXTURE
-	vec4 base = texture(baseTexture, vec3(uv, varTexLayer)).rgba;
+	vec4 base = texture(baseTexture, vec3(uv, float(varTexLayer))).rgba;
 #else
 	vec4 base = texture2D(baseTexture, uv).rgba;
 #endif

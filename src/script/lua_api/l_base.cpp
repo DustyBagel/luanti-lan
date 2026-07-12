@@ -3,13 +3,12 @@
 // Copyright (C) 2013 celeron55, Perttu Ahola <celeron55@gmail.com>
 
 #include "lua_api/l_base.h"
-#include "lua_api/l_internal.h"
 #include "cpp_api/s_base.h"
 #include "content/mods.h"
 #include "profiler.h"
+#include "porting.h"
 #include "server.h"
 #include <algorithm>
-#include <cmath>
 #include <sstream>
 
 ScriptApiBase *ModApiBase::getScriptApiBase(lua_State *L)
@@ -58,6 +57,11 @@ GUIEngine *ModApiBase::getGuiEngine(lua_State *L)
 {
 	return getScriptApiBase(L)->getGuiEngine();
 }
+
+SSCSMEnvironment *ModApiBase::getSSCSMEnv(lua_State *L)
+{
+	return getScriptApiBase(L)->getSSCSMEnv();
+}
 #endif
 
 EmergeThread *ModApiBase::getEmergeThread(lua_State *L)
@@ -71,7 +75,7 @@ std::string ModApiBase::getCurrentModPath(lua_State *L)
 	if (current_mod_name.empty())
 		return ".";
 
-	const ModSpec *mod = getServer(L)->getModSpec(current_mod_name);
+	const ModSpec *mod = getGameDef(L)->getModSpec(current_mod_name);
 	if (!mod)
 		return ".";
 

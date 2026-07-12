@@ -10,6 +10,7 @@
 #include "server.h"
 #include "serverenvironment.h"
 #include "settings.h"
+#include "util/serialize.h"
 
 PlayerSAO::PlayerSAO(ServerEnvironment *env_, RemotePlayer *player_, session_t peer_id_,
 		bool is_singleplayer):
@@ -108,22 +109,27 @@ std::string PlayerSAO::getClientInitializationData(u16 protocol_version)
 	writeU16(os, getHP());
 
 	std::ostringstream msg_os(std::ios::binary);
-	msg_os << serializeString32(getPropertyPacket()); // message 1
-	msg_os << serializeString32(generateUpdateArmorGroupsCommand()); // 2
-	msg_os << serializeString32(generateUpdateAnimationCommand()); // 3
-	for (const auto &it : m_bone_override) {
-		msg_os << serializeString32(generateUpdateBoneOverrideCommand(
-			it.first, it.second)); // 3 + N
+	int message_count = 0;
+	auto append_message = [&](const std::string &message) {
+		msg_os << serializeString32(message);
+		++message_count;
+	};
+	append_message(getPropertyPacket());
+	append_message(generateUpdateArmorGroupsCommand());
+	for (const auto &[track, anim] : getAnimation().tracks) {
+		if (anim.state != TrackAnimation::State::STOPPED)
+			append_message(generateUpdateAnimationCommand(track));
 	}
-	msg_os << serializeString32(generateUpdateAttachmentCommand()); // 4 + m_bone_override.size
-	msg_os << serializeString32(generateUpdatePhysicsOverrideCommand()); // 5 + m_bone_override.size
-
-	int message_count = 5 + m_bone_override.size();
+	for (const auto &it : m_bone_override) {
+		append_message(generateUpdateBoneOverrideCommand(
+			it.first, it.second));
+	}
+	append_message(generateUpdateAttachmentCommand());
+	append_message(generateUpdatePhysicsOverrideCommand());
 
 	for (const auto &id : getAttachmentChildIds()) {
 		if (ServerActiveObject *obj = m_env->getActiveObject(id)) {
-			message_count++;
-			msg_os << serializeString32(obj->generateUpdateInfantCommand(
+			append_message(obj->generateUpdateInfantCommand(
 				id, protocol_version));
 		}
 	}
@@ -158,7 +164,8 @@ void PlayerSAO::step(float dtime, bool send_recommended)
 
 			// No more breath, damage player
 			if (m_breath == 0) {
-				PlayerHPChangeReason reason(PlayerHPChangeReason::DROWNING);
+				std::string nodename = c.name;
+				PlayerHPChangeReason reason(PlayerHPChangeReason::DROWNING, nodename, p);
 				setHP(m_hp - c.drowning, reason);
 			}
 		}
@@ -315,7 +322,7 @@ std::string PlayerSAO::generateUpdatePhysicsOverrideCommand() const
 	writeF32(os, phys.speed);
 	writeF32(os, phys.jump);
 	writeF32(os, phys.gravity);
-	// MT 0.4.10 legacy: send inverted for detault `true` if the server sends nothing
+	// MT 0.4.10 legacy: send inverted for default `true` if the server sends nothing
 	writeU8(os, !phys.sneak);
 	writeU8(os, !phys.sneak_glitch);
 	writeU8(os, !phys.new_move);
@@ -354,14 +361,14 @@ void PlayerSAO::setPos(const v3f &pos)
 
 	// Send mapblock of target location
 	v3s16 blockpos = v3s16(pos.X / MAP_BLOCKSIZE, pos.Y / MAP_BLOCKSIZE, pos.Z / MAP_BLOCKSIZE);
-	m_env->getGameDef()->SendBlock(getPeerID(), blockpos);
+	m_env->getServer()->SendBlock(getPeerID(), blockpos);
 
 	setBasePosition(pos);
 	// Movement caused by this command is always valid
 	m_last_good_position = getBasePosition();
 	m_move_pool.empty();
 	m_time_from_last_teleport = 0.0;
-	m_env->getGameDef()->SendMovePlayer(this);
+	m_env->getServer()->SendMovePlayer(this);
 }
 
 void PlayerSAO::addPos(const v3f &added_pos)
@@ -378,14 +385,14 @@ void PlayerSAO::addPos(const v3f &added_pos)
 	// Send mapblock of target location
 	v3f pos = getBasePosition() + added_pos;
 	v3s16 blockpos = v3s16(pos.X / MAP_BLOCKSIZE, pos.Y / MAP_BLOCKSIZE, pos.Z / MAP_BLOCKSIZE);
-	m_env->getGameDef()->SendBlock(getPeerID(), blockpos);
+	m_env->getServer()->SendBlock(getPeerID(), blockpos);
 
 	setBasePosition(pos);
 	// Movement caused by this command is always valid
 	m_last_good_position = getBasePosition();
 	m_move_pool.empty();
 	m_time_from_last_teleport = 0.0;
-	m_env->getGameDef()->SendMovePlayerRel(getPeerID(), added_pos);
+	m_env->getServer()->SendMovePlayerRel(getPeerID(), added_pos);
 }
 
 void PlayerSAO::moveTo(v3f pos, bool continuous)
@@ -398,7 +405,7 @@ void PlayerSAO::moveTo(v3f pos, bool continuous)
 	m_last_good_position = getBasePosition();
 	m_move_pool.empty();
 	m_time_from_last_teleport = 0.0;
-	m_env->getGameDef()->SendMovePlayer(this);
+	m_env->getServer()->SendMovePlayer(this);
 }
 
 void PlayerSAO::setPlayerYaw(const float yaw)
@@ -430,7 +437,7 @@ void PlayerSAO::setWantedRange(const s16 range)
 void PlayerSAO::setPlayerYawAndSend(const float yaw)
 {
 	setPlayerYaw(yaw);
-	m_env->getGameDef()->SendMovePlayer(this);
+	m_env->getServer()->SendMovePlayer(this);
 }
 
 void PlayerSAO::setLookPitch(const float pitch)
@@ -444,18 +451,15 @@ void PlayerSAO::setLookPitch(const float pitch)
 void PlayerSAO::setLookPitchAndSend(const float pitch)
 {
 	setLookPitch(pitch);
-	m_env->getGameDef()->SendMovePlayer(this);
+	m_env->getServer()->SendMovePlayer(this);
 }
 
 u32 PlayerSAO::punch(v3f dir,
-	const ToolCapabilities *toolcap,
+	const ToolCapabilities &toolcap,
 	ServerActiveObject *puncher,
 	float time_from_last_punch,
 	u16 initial_wear)
 {
-	if (!toolcap)
-		return 0;
-
 	// No effect if PvP disabled or if immortal
 	if (isImmortal() || !g_settings->getBool("enable_pvp")) {
 		if (puncher && puncher->getType() == ACTIVEOBJECT_TYPE_PLAYER) {
@@ -530,9 +534,9 @@ void PlayerSAO::setHP(s32 target_hp, const PlayerHPChangeReason &reason, bool fr
 
 	if (hp != m_hp) {
 		m_hp = hp;
-		m_env->getGameDef()->HandlePlayerHPChange(this, reason);
+		m_env->getServer()->HandlePlayerHPChange(this, reason);
 	} else if (from_client)
-		m_env->getGameDef()->SendPlayerHP(this, true);
+		m_env->getServer()->SendPlayerHP(this, true);
 }
 
 void PlayerSAO::setBreath(const u16 breath, bool send)
@@ -543,7 +547,7 @@ void PlayerSAO::setBreath(const u16 breath, bool send)
 	m_breath = rangelim(breath, 0, m_prop.breath_max);
 
 	if (send)
-		m_env->getGameDef()->SendPlayerBreath(this);
+		m_env->getServer()->SendPlayerBreath(this);
 }
 
 void PlayerSAO::respawn()
@@ -557,7 +561,7 @@ void PlayerSAO::respawn()
 	bool repositioned = m_env->getScriptIface()->on_respawnplayer(this);
 	if (!repositioned) {
 		// setPos will send the new position to client
-		setPos(m_env->getGameDef()->findSpawnPos());
+		setPos(m_env->getServer()->findSpawnPos());
 	}
 }
 

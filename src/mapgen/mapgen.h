@@ -6,11 +6,13 @@
 
 #pragma once
 
+#include "constants.h"
 #include "noise.h"
 #include "nodedef.h"
 #include "util/string.h"
 #include "util/container.h"
 #include <utility>
+#include <set>
 
 #define MAPGEN_DEFAULT MAPGEN_V7
 #define MAPGEN_DEFAULT_NAME "v7"
@@ -85,7 +87,7 @@ private:
 	u32 m_notify_on = 0;
 	const std::set<u32> *m_notify_on_deco_ids = nullptr;
 	const std::set<std::string> *m_notify_on_custom = nullptr;
-	std::list<GenNotifyEvent> m_notify_events;
+	std::vector<GenNotifyEvent> m_notify_events;
 	StringMap m_notify_custom;
 
 	inline bool shouldNotifyOn(GenNotifyType type) const {
@@ -284,9 +286,9 @@ public:
 	virtual void generateDungeons(s16 max_stone_y);
 
 protected:
-	BiomeManager *m_bmgr;
+	BiomeManager *m_bmgr = nullptr;
 
-	Noise *noise_filler_depth;
+	Noise *noise_filler_depth = nullptr;
 
 	v3s16 node_min;
 	v3s16 node_max;

@@ -16,10 +16,22 @@
 #include <emscripten/html5.h>
 #endif
 
+#ifdef _IRR_USE_SDL3_
+#define SDL_DISABLE_OLD_NAMES
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_mouse.h>
+#else
 #include <SDL.h>
+#endif
 
+#include <map>
 #include <memory>
 #include <unordered_map>
+
+#ifndef _IRR_USE_SDL3_
+	// Backward compatibility for SDL2
+	#define SDL_Gamepad SDL_GameController
+#endif
 
 class CIrrDeviceSDL : public CIrrDeviceStub
 {
@@ -89,9 +101,6 @@ public:
 	//! Get the position of this window on screen
 	core::position2di getWindowPosition() override;
 
-	//! Activate any joysticks, and generate events for them.
-	bool activateJoysticks(core::array<SJoystickInfo> &joystickInfo) override;
-
 	//! Get the device type
 	E_DEVICE_TYPE getType() const override
 	{
@@ -99,17 +108,22 @@ public:
 	}
 
 	//! Get the SDL version
-	std::string getVersionString() const override
-	{
-		SDL_version ver;
-		SDL_GetVersion(&ver);
-		return std::to_string(ver.major) + "." + std::to_string(ver.minor) + "." + std::to_string(ver.patch);
-	}
+	std::string getVersionString() const override;
 
 	//! Get the display density in dots per inch.
 	float getDisplayDensity() const override;
 
 	void SwapWindow();
+
+	// We need this twice to handle showing an error *with* or *without*
+	// the SDL device even being initialized.
+
+	static bool showErrorMessageBox(SDL_Window *window, const char *title, const char *message);
+	inline bool showErrorMessageBox(const char *title, const char *message)
+	{
+		// (Window can be null, but that's ok)
+		return showErrorMessageBox(Window, title, message);
+	}
 
 	//! Implementation of the linux cursor control
 	class CCursorControl : public gui::ICursorControl
@@ -125,11 +139,14 @@ public:
 		void setVisible(bool visible) override
 		{
 			IsVisible = visible;
+#ifdef _IRR_USE_SDL3_
 			if (visible)
-				SDL_ShowCursor(SDL_ENABLE);
-			else {
-				SDL_ShowCursor(SDL_DISABLE);
-			}
+				SDL_ShowCursor();
+			else
+				SDL_HideCursor();
+#else
+			SDL_ShowCursor(visible ? SDL_ENABLE : SDL_DISABLE);
+#endif
 		}
 
 		//! Returns if the cursor is currently visible.
@@ -166,8 +183,11 @@ public:
 					static_cast<int>(x / Device->ScaleX),
 					static_cast<int>(y / Device->ScaleY));
 #endif
-
+#ifdef _IRR_USE_SDL3_
+			if (SDL_GetWindowRelativeMouseMode(Device->Window)) {
+#else
 			if (SDL_GetRelativeMouseMode()) {
+#endif
 				// There won't be an event for this warp (details on libsdl-org/SDL/issues/6034)
 				Device->MouseX = x;
 				Device->MouseY = y;
@@ -197,13 +217,16 @@ public:
 
 		virtual void setRelativeMode(bool relative) override
 		{
+#ifdef _IRR_USE_SDL3_
+			if (relative != (bool)SDL_GetWindowRelativeMouseMode(Device->Window)) {
+				SDL_SetWindowRelativeMouseMode(Device->Window, relative);
+			}
+#else
 			// Only change it when necessary, as it flushes mouse motion when enabled
 			if (relative != static_cast<bool>(SDL_GetRelativeMouseMode())) {
-				if (relative)
-					SDL_SetRelativeMouseMode(SDL_TRUE);
-				else
-					SDL_SetRelativeMouseMode(SDL_FALSE);
+				SDL_SetRelativeMouseMode(relative ? SDL_TRUE : SDL_FALSE);
 			}
+#endif
 		}
 
 		void setActiveIcon(gui::ECURSOR_ICON iconId) override
@@ -241,15 +264,6 @@ public:
 #else
 			CursorPos.X = Device->MouseX;
 			CursorPos.Y = Device->MouseY;
-
-			if (CursorPos.X < 0)
-				CursorPos.X = 0;
-			if (CursorPos.X > (s32)Device->Width)
-				CursorPos.X = Device->Width;
-			if (CursorPos.Y < 0)
-				CursorPos.Y = 0;
-			if (CursorPos.Y > (s32)Device->Height)
-				CursorPos.Y = Device->Height;
 #endif
 		}
 
@@ -263,13 +277,23 @@ public:
 		{
 			void operator()(SDL_Cursor *ptr)
 			{
+#ifdef _IRR_USE_SDL3_
+				if (ptr)
+					SDL_DestroyCursor(ptr);
+#else
 				if (ptr)
 					SDL_FreeCursor(ptr);
+#endif
 			}
 		};
 		std::vector<std::unique_ptr<SDL_Cursor, CursorDeleter>> Cursors;
 		gui::ECURSOR_ICON ActiveIcon = gui::ECURSOR_ICON::ECI_NORMAL;
 	};
+
+	u32 getScancodeFromKey(const Keycode &key) const override;
+	Keycode getKeyFromScancode(const u32 scancode) const override;
+
+	GamepadButtonLabel getGamepadButtonLabel(const GamepadButton button) const override;
 
 private:
 #ifdef _IRR_EMSCRIPTEN_PLATFORM_
@@ -282,10 +306,7 @@ private:
 	static bool keyIsKnownSpecial(EKEY_CODE irrlichtKey);
 
 	// Return the Char that should be sent to Irrlicht for the given key (either the one passed in or 0).
-	static int findCharToPassToIrrlicht(uint32_t sdlKey, EKEY_CODE irrlichtKey, bool numlock);
-
-	std::variant<u32, EKEY_CODE> getScancodeFromKey(const Keycode &key) const override;
-	Keycode getKeyFromScancode(const u32 scancode) const override;
+	static wchar_t findCharToPassToIrrlicht(uint32_t sdlKey, EKEY_CODE irrlichtKey, u16 keymod);
 
 	// Check if a text box is in focus. Enable or disable SDL_TEXTINPUT events only if in focus.
 	void resetReceiveTextInputEvents();
@@ -302,8 +323,14 @@ private:
 	SDL_GLContext Context;
 	SDL_Window *Window;
 #if defined(_IRR_COMPILE_WITH_JOYSTICK_EVENTS_)
-	core::array<SDL_Joystick *> Joysticks;
-#endif
+	std::map<SDL_JoystickID, SDL_Gamepad*> gamepads;
+#ifdef _IRR_USE_SDL3
+	SDL_JoystickID recentGamepadID = -1;
+#else
+	SDL_JoystickID recentGamepadID = 0;
+#endif // _IRR_USE_SDL3_
+	SDL_Gamepad *getRecentGamepad() const;
+#endif // _IRR_COMPILE_WITH_JOYSTICK_EVENTS_
 
 	s32 MouseX, MouseY;
 	// these two only continue to exist for some Emscripten stuff idk about
@@ -316,7 +343,9 @@ private:
 
 	bool Resizable;
 
+#ifndef _IRR_USE_SDL3_
 	static u32 getFullscreenFlag(bool fullscreen);
+#endif // SDL3: Replaced by boolean
 
 	core::rect<s32> lastElemPos;
 

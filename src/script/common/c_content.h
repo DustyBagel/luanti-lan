@@ -23,8 +23,8 @@ extern "C" {
 #include "itemgroup.h"
 #include "util/pointabilities.h"
 // We do an explicit path include because by default c_content.h include src/client/hud.h
-// prior to the src/hud.h, which is not good on server only build
-#include "../../hud.h"
+// prior to the src/hud_element.h, which is not good on server only build
+#include "hud_element.h"
 
 class IGameDef;
 class IItemDefManager;
@@ -33,7 +33,7 @@ class InventoryList;
 class NodeDefManager;
 class ServerActiveObject;
 
-struct collisionMoveResult;
+struct CollisionMoveResult;
 struct ContentFeatures;
 struct DigParams;
 struct EnumString;
@@ -61,7 +61,7 @@ extern struct EnumString es_TileAnimationType[];
 extern struct EnumString es_ItemType[];
 extern struct EnumString es_TouchInteractionMode[];
 
-extern const std::array<const char *, 35> object_property_keys;
+extern const std::array<const char *, 36> object_property_keys;
 
 void read_content_features(lua_State *L, ContentFeatures &f, int index);
 void push_content_features(lua_State *L, const ContentFeatures &c);
@@ -172,6 +172,6 @@ void push_hud_element(lua_State *L, HudElement *elem);
 
 bool read_hud_change(lua_State *L, HudElementStat &stat, HudElement *elem, void **value);
 
-void push_collision_move_result(lua_State *L, const collisionMoveResult &res);
+void push_collision_move_result(lua_State *L, const CollisionMoveResult &res);
 
 void push_mod_spec(lua_State *L, const ModSpec &spec, bool include_unsatisfied);

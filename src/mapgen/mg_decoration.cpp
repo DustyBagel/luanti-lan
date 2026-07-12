@@ -8,8 +8,6 @@
 #include "mapgen.h"
 #include "noise.h"
 #include "map.h"
-#include "log.h"
-#include "util/numeric.h"
 #include <algorithm>
 #include <vector>
 #include "mapgen/treegen.h"
@@ -138,7 +136,7 @@ void Decoration::placeDeco(Mapgen *mg, u32 blockseed, v3s16 nmin, v3s16 nmax)
 	}
 
 	// Divide area into parts
-	// If chunksize is changed it may no longer be divisable by sidelen
+	// If chunksize is changed it may no longer be divisible by sidelen
 	if (carea_size % sidelen != 0)
 		sidelen = carea_size;
 

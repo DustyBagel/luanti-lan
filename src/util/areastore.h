@@ -5,9 +5,7 @@
 #pragma once
 
 #include "irr_v3d.h"
-#include "noise.h" // for PcgRandom
 #include <map>
-#include <list>
 #include <vector>
 #include <istream>
 #include "util/container.h"
@@ -17,7 +15,6 @@
 #endif
 #if USE_SPATIAL
 	#include <spatialindex/SpatialIndex.h>
-	#include "util/serialize.h"
 #endif
 
 
@@ -71,7 +68,7 @@ public:
 	/// Sets cache parameters.
 	void setCacheParams(bool enabled, u8 block_radius, size_t limit);
 
-	/// Returns a pointer to the area coresponding to the passed ID,
+	/// Returns a pointer to the area corresponding to the passed ID,
 	/// or NULL if it doesn't exist.
 	const Area *getArea(u32 id) const;
 

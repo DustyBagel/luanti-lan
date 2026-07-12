@@ -4,20 +4,11 @@
 
 #include "address.h"
 
-#include <cstdio>
 #include <iostream>
-#include <cstdlib>
 #include <cstring>
 #include <cerrno>
-#include <sstream>
-#include <iomanip>
 #include "network/networkexceptions.h"
-#include "util/string.h"
-#include "util/numeric.h"
-#include "constants.h"
-#include "debug.h"
 #include "settings.h"
-#include "log.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -146,8 +137,17 @@ void Address::Resolve(const char *name, Address *fallback)
 // IP address -> textual representation
 std::string Address::serializeString() const
 {
+	const void *src = nullptr;
+	switch (m_addr_family) {
+		case AF_INET:  src = &m_address.ipv4; break;
+		case AF_INET6: src = &m_address.ipv6; break;
+	}
+
+	if (!src)
+		return "<unhandled-addr-family>";
+
 	char str[INET6_ADDRSTRLEN];
-	if (inet_ntop(m_addr_family, (void*) &m_address, str, sizeof(str)) == nullptr)
+	if (inet_ntop(m_addr_family, src, str, sizeof(str)) == nullptr)
 		return "";
 	return str;
 }

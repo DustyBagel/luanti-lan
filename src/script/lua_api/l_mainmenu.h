@@ -72,6 +72,8 @@ private:
 
 	static int l_get_content_info(lua_State *L);
 
+	static int l_get_mod_list(lua_State *L);
+
 	static int l_check_mod_configuration(lua_State *L);
 
 	static int l_get_content_translation(lua_State *L);
@@ -85,6 +87,10 @@ private:
 	static int l_set_topleft_text(lua_State *L);
 
 	static int l_set_clouds(lua_State *L);
+
+	static int l_set_clouds_color(lua_State *L);
+
+	static int l_set_sky_color(lua_State *L);
 
 	static int l_get_textlist_index(lua_State *L);
 
@@ -145,6 +151,8 @@ private:
 
 	static int l_get_formspec_version(lua_State  *L);
 
+	static int l_is_debug_build(lua_State  *L);
+
 	// other
 	static int l_open_url(lua_State *L);
 
@@ -156,6 +164,9 @@ private:
 
 	// async
 	static int l_do_async_callback(lua_State *L);
+
+	// clipboard
+	static int l_copy_to_clipboard(lua_State *L);
 
 public:
 

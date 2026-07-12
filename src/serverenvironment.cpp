@@ -20,11 +20,9 @@
 #include "scripting_server.h"
 #include "server.h"
 #include "servermap.h"
-#include "util/serialize.h"
 #include "util/numeric.h"
 #include "util/basic_macros.h"
 #include "util/pointedthing.h"
-#include "threading/mutex_auto_lock.h"
 #include "filesys.h"
 #include "gameparams.h"
 #include "database/database-dummy.h"
@@ -36,7 +34,6 @@
 #if USE_LEVELDB
 #include "database/database-leveldb.h"
 #endif
-#include "irrlicht_changes/printing.h"
 #include "server/luaentity_sao.h"
 #include "server/player_sao.h"
 
@@ -710,7 +707,8 @@ u8 ServerEnvironment::findSunlight(v3s16 pos) const
 			MapNode node = m_map->getNode(neighborPos, &is_position_ok);
 			if (!is_position_ok) {
 				// This happens very rarely because the map at currentPos is loaded
-				m_map->emergeBlock(neighborPos, false);
+				v3s16 blockpos = getNodeBlockPos(neighborPos);
+				m_map->emergeBlock(blockpos, false);
 				node = m_map->getNode(neighborPos, &is_position_ok);
 				if (!is_position_ok)
 					continue; // not generated
@@ -2004,6 +2002,9 @@ AuthDatabase *ServerEnvironment::openAuthDatabase(
 
 	if (name == "files")
 		return new AuthDatabaseFiles(savedir);
+
+	if (name == "dummy")
+		return new AuthDatabaseDummy();
 
 #if USE_LEVELDB
 	if (name == "leveldb")

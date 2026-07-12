@@ -2,12 +2,9 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 // Copyright (C) 2010-2013 celeron55, Perttu Ahola <celeron55@gmail.com>
 
-#include <fstream>
 #include "environment.h"
 #include "collision.h"
 #include "raycast.h"
-#include "scripting_server.h"
-#include "server.h"
 #include "settings.h"
 #include "daynightratio.h"
 #include "emerge.h"
@@ -65,7 +62,7 @@ float Environment::getTimeOfDayF()
 
 bool Environment::line_of_sight(v3f pos1, v3f pos2, v3s16 *p)
 {
-	// Iterate trough nodes on the line
+	// Iterate through nodes on the line
 	voxalgo::VoxelLineIterator iterator(pos1 / BS, (pos2 - pos1) / BS);
 	do {
 		MapNode n = getMap().getNode(iterator.m_current_node_pos);

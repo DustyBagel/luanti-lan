@@ -6,7 +6,7 @@
 
 #include <string>
 #include "irrlichttypes.h"
-#include "client/hud.h" // HudElementStat
+#include "hud_element.h" // HudElementStat
 
 struct ParticleParameters;
 struct ParticleSpawnerParameters;
@@ -50,8 +50,9 @@ struct ClientEventHudAdd
 	u32 number, item, dir, style;
 	v2f align, offset;
 	v3f world_pos;
-	v2s32 size;
+	v2f size;
 	s16 z_index;
+	bool hideable;
 };
 
 struct ClientEventHudChange

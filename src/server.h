@@ -7,7 +7,7 @@
 #include "network/lan.h"
 #include "irr_v3d.h"
 #include "map.h"
-#include "hud.h" // HudElementStat
+#include "hud_element.h" // HudElementStat
 #include "gamedef.h"
 #include "content/subgames.h"
 #include "network/peerhandler.h"
@@ -17,7 +17,7 @@
 #include "server/clientiface.h"
 #include "threading/ordered_mutex.h"
 #include "translation.h"
-#include "sound.h"
+#include "sound_spec.h"
 #include <atomic>
 #include <csignal>
 #include <string>
@@ -106,8 +106,8 @@ struct MediaInfo
 	// does what it says. used by some cases of dynamic media.
 	bool delete_at_shutdown;
 
-	MediaInfo(std::string_view path_ = "",
-	          std::string_view sha1_digest_ = ""):
+	MediaInfo(std::string_view path_,
+	          std::string_view sha1_digest_):
 		path(path_),
 		sha1_digest(sha1_digest_),
 		no_announce(false),
@@ -371,7 +371,7 @@ public:
 	ServerEnvironment & getEnv() { return *m_env; }
 	v3f findSpawnPos();
 
-	u32 hudAdd(RemotePlayer *player, HudElement *element);
+	u32 hudAdd(RemotePlayer *player, std::unique_ptr<HudElement> element);
 	bool hudRemove(RemotePlayer *player, u32 id);
 	bool hudChange(RemotePlayer *player, u32 id, HudElementStat stat, void *value);
 	bool hudSetFlags(RemotePlayer *player, u32 flags, u32 mask);
@@ -417,7 +417,7 @@ public:
 	void HandlePlayerHPChange(PlayerSAO *sao, const PlayerHPChangeReason &reason);
 	void SendPlayerHP(PlayerSAO *sao, bool effect);
 	void SendPlayerBreath(PlayerSAO *sao);
-	void SendInventory(RemotePlayer *player, bool incremental);
+	void SendInventory(RemotePlayer *player, bool incremental, bool skip_wield_anim = false);
 	void SendMovePlayer(PlayerSAO *sao);
 	void SendMovePlayerRel(session_t peer_id, const v3f &added_pos);
 	void SendPlayerSpeed(session_t peer_id, const v3f &added_vel);
@@ -439,6 +439,7 @@ public:
 	bool SendBlock(session_t peer_id, const v3s16 &blockpos);
 
 	// Get or load translations for a language
+	// Note: don't store returned pointer.
 	Translations *getTranslationLanguage(const std::string &lang_code);
 
 	// Returns all media files the server knows about
@@ -475,7 +476,7 @@ public:
 		EnvAutoLock(Server *server): m_lock(server->m_env_mutex) {}
 
 	private:
-		std::lock_guard<ordered_mutex> m_lock;
+		std::lock_guard<std::mutex> m_lock;
 	};
 
 protected:
@@ -584,7 +585,7 @@ private:
 			float far_d_nodes = 100);
 
 	// Environment and Connection must be locked when called
-	// `cache` may only be very short lived! (invalidation not handeled)
+	// `cache` may only be very short lived! (invalidation not handled)
 	void SendBlockNoLock(session_t peer_id, MapBlock *block, u8 ver,
 		u16 net_proto_version, SerializedBlockCache *cache = nullptr);
 
@@ -663,7 +664,7 @@ private:
 	*/
 
 	// Environment mutex (envlock)
-	ordered_mutex m_env_mutex;
+	std::mutex m_env_mutex;
 
 	// World directory
 	std::string m_path_world;
@@ -719,6 +720,7 @@ private:
 
 	// NOTE: Cannot use forward declaration of 'Translations'. Whereas most
 	// modern compilers support incomplete types here, it's not in the C++ spec.
+	// key = lang_code
 	std::unordered_map<std::string, Translations> server_translations;
 
 	ModIPCStore m_ipcstore;

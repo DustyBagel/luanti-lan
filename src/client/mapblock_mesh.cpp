@@ -6,20 +6,19 @@
 #include "CMeshBuffer.h"
 #include "client.h"
 #include "mapblock.h"
-#include "map.h"
-#include "noise.h"
-#include "profiler.h"
+#include "node_visuals.h"
+#include "porting.h"
 #include "shader.h"
 #include "mesh.h"
 #include "minimap.h"
 #include "content_mapblock.h"
-#include "util/directiontables.h"
 #include "util/tracy_wrapper.h"
 #include "client/meshgen/collector.h"
 #include "client/renderingengine.h"
 #include <array>
 #include <algorithm>
 #include <cmath>
+#include <cassert>
 #include "client/texturesource.h"
 #include <SMesh.h>
 #include <IMeshBuffer.h>
@@ -166,7 +165,7 @@ static u16 getSmoothLightCombined(const v3s16 &p,
 		if (f.light_source > light_source_max)
 			light_source_max = f.light_source;
 		// Check f.solidness because fast-style leaves look better this way
-		if (f.param_type == CPT_LIGHT && f.solidness != 2) {
+		if (f.param_type == CPT_LIGHT && f.visuals->solidness != 2) {
 			u8 light_level_day = n.getLight(LIGHTBANK_DAY, f.getLightingFlags());
 			u8 light_level_night = n.getLight(LIGHTBANK_NIGHT, f.getLightingFlags());
 			if (light_level_day == LIGHT_SUN)
@@ -335,13 +334,13 @@ void getNodeTileN(MapNode mn, const v3s16 &p, u8 tileindex, MeshMakeData *data, 
 {
 	const NodeDefManager *ndef = data->m_nodedef;
 	const ContentFeatures &f = ndef->get(mn);
-	tile = f.tiles[tileindex];
+	tile = f.visuals->tiles[tileindex];
 	bool has_crack = p == data->m_crack_pos_relative;
 	for (TileLayer &layer : tile.layers) {
 		if (layer.empty())
 			continue;
 		if (!layer.has_color)
-			mn.getColor(f, &(layer.color));
+			f.visuals->getColor(mn.param2, &(layer.color));
 		// Apply temporary crack
 		if (has_crack)
 			layer.material_flags |= MATERIAL_FLAG_CRACK;
@@ -588,6 +587,47 @@ void PartialMeshBuffer::draw(video::IVideoDriver *driver) const
 	MapBlockMesh
 */
 
+static void applyColorAndMerge(std::vector<PreMeshBuffer> &prebuffers)
+{
+	// TODO: we should change the meshgen so it already applies the tile color
+	// so that we don't need to this extra step.
+	// However currently the CAO code relies on the ability to erase the vertex
+	// colors (light data) before applying the tile colors.
+
+	for (auto &p : prebuffers) {
+		// bake color into vertices
+		p.applyTileColor();
+		// erase color information for later comparisons
+		p.layer.has_color = false;
+		p.layer.color = 0;
+	}
+
+	std::unordered_map<TileLayer, size_t> seen;
+	for (size_t i = 0; i < prebuffers.size(); i++) {
+		PreMeshBuffer &p = prebuffers[i];
+		auto it = seen.find(p.layer);
+		if (it == seen.end()) { // first time
+			seen[p.layer] = i;
+			continue;
+		}
+		// merge
+		auto &dst = prebuffers[it->second];
+		assert(p.layer == dst.layer);
+		if (dst.append(p)) {
+			p = PreMeshBuffer();
+		} else {
+			// other buffer full, this one becomes the new target
+			it->second = i;
+		}
+	}
+
+	// remove all empty buffers
+	prebuffers.erase(std::remove_if(prebuffers.begin(), prebuffers.end(),
+		[] (const PreMeshBuffer &p) {
+		return p.empty();
+	}), prebuffers.end());
+}
+
 MapBlockMesh::MapBlockMesh(Client *client, MeshMakeData *data):
 	m_tsrc(client->getTextureSource()),
 	m_shdrsrc(client->getShaderSource()),
@@ -641,11 +681,12 @@ MapBlockMesh::MapBlockMesh(Client *client, MeshMakeData *data):
 	for (int layer = 0; layer < MAX_TILE_LAYERS; layer++) {
 		scene::SMesh *mesh = static_cast<scene::SMesh *>(m_mesh[layer].get());
 
-		for(u32 i = 0; i < collector.prebuffers[layer].size(); i++)
-		{
-			PreMeshBuffer &p = collector.prebuffers[layer][i];
+		applyColorAndMerge(collector.prebuffers[layer]);
 
-			p.applyTileColor();
+		for (size_t i = 0; i < collector.prebuffers[layer].size(); i++) {
+			PreMeshBuffer &p = collector.prebuffers[layer][i];
+			// Note that the buffer index matters, so 'continue' is forbidden here.
+			assert(!p.empty());
 
 			// Generate animation data
 			if (p.layer.material_flags & MATERIAL_FLAG_ANIMATION) {
@@ -914,7 +955,7 @@ u8 get_solid_sides(MeshMakeData *data)
 
 		for (u8 k = 0; k < 6; k++) {
 			const MapNode &top = data->m_vmanip.getNodeRefUnsafe(blockpos_nodes + positions[k]);
-			if (ndef->get(top).solidness != 2)
+			if (ndef->get(top).visuals->solidness != 2)
 				result &= ~(1 << k);
 		}
 	}

@@ -101,12 +101,12 @@ struct TileLayer
 	/**
 	 * Set some material parameters accordingly.
 	 * @note does not set `MaterialType`!
-	 * @param material material to mody
+	 * @param material material to modify
 	 * @param layer index of this layer in the `TileSpec`
 	 */
 	void applyMaterialOptions(video::SMaterial &material, int layer) const;
 
-	/// @return is this layer uninitalized?
+	/// @return is this layer uninitialized?
 	bool empty() const
 	{
 		return !shader_id && !texture_id;
@@ -166,6 +166,23 @@ struct TileLayer
 	//! If true, the tile has its own color.
 	bool has_color = false;
 };
+
+template<>
+struct std::hash<TileLayer>
+{
+	// All layers equal according to TileLayer::operator== will have the same
+	// hash value according to this function.
+	std::size_t operator()(const TileLayer &l) const noexcept
+	{
+		std::size_t ret = 0;
+		for (auto h : { l.texture_id, l.shader_id, (u32)l.material_flags }) {
+			ret += h;
+			ret ^= (ret << 6) + (ret >> 2); // distribute bits
+		}
+		return ret;
+	}
+};
+
 
 // Stores information for drawing an animated tile
 struct AnimationInfo {

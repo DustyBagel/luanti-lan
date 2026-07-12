@@ -1,4 +1,4 @@
-Luanti Lua Mainmenu API Reference 5.15.0
+Luanti Lua Mainmenu API Reference 5.17.0
 ========================================
 
 Introduction
@@ -40,8 +40,10 @@ The "gamedata" table is read when calling `core.start()`. It should contain:
     password       = <password>,
     address        = <IP/address>,
     port           = <port>,
+    do_reconnect   = <bool>,
+    allow_login_or_register = "login"|"register"|"any",
     selected_world = <index>, -- 0 for client mode
-    singleplayer   = <true/false>,
+    mode           = "singleplayer"|"host"|"join",
 }
 ```
 
@@ -218,6 +220,9 @@ GUI
   * `minsize`: minimum tile size, images are scaled to at least this size prior
    doing tiling (background only)
 * `core.set_clouds(<true/false>)`
+* `core.set_clouds_color(colorString)`
+* `core.set_sky_color(colorString)`
+  * `colorString`: `"#RRGGBB"` format
 * `core.set_topleft_text(text)`
 * `core.show_touchscreen_layout()`
 * `core.show_path_select_dialog(formname, caption, is_file_select)`
@@ -323,6 +328,7 @@ Package - content which is downloadable from the content db, may or may not be i
           title            = <title of game>,
           menuicon_path    = <full path to menuicon>,
           author           = "author",
+          aliases          = {<alias> = true,},
           --DEPRECATED:
           addon_mods_paths = {[1] = <path>,},
       }
@@ -342,6 +348,10 @@ Package - content which is downloadable from the content db, may or may not be i
           optional_depends = {"mod", "names"}, -- mods only
       }
       ```
+* `core.get_mod_list(path, virtual_path)`
+    * Returns a flat list of mod and modpack information found within the specified path.
+    * Each entry consists of the fields `name`, `author`, `release`, `description`,
+      `path`, `virtual_path`, `is_name_explicit`, `is_modpack`, `modpack_depth`.
 * `core.check_mod_configuration(world_path, mod_paths)`
     * Checks whether configuration is valid.
     * `world_path`: path to the world
@@ -433,6 +443,13 @@ Helpers
 * `core.urlencode(str)`: Encodes non-unreserved URI characters by a
   percent sign followed by two hex digits. See
   [RFC 3986, section 2.3](https://datatracker.ietf.org/doc/html/rfc3986#section-2.3).
+
+
+Clipboard
+-----
+
+* `core.copy_to_clipboard(text)`
+  * Copies text to the clipboard.
 
 
 Async

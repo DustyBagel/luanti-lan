@@ -4,8 +4,6 @@
 
 #include "config.h"
 #include "content/mods.h"
-#include "json-forwards.h"
-#include <iostream>
 #include "network/lan.h"
 
 #pragma once

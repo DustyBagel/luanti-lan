@@ -1,15 +1,20 @@
 uniform mat4 LightMVP; // world matrix
 uniform vec4 CameraPos; // camera position
-varying vec4 tPos;
+VARYING_ vec4 tPos;
 
 uniform float xyPerspectiveBias0;
 uniform float xyPerspectiveBias1;
 uniform float zPerspectiveBias;
 
-#ifdef GL_ES
-varying mediump vec2 varTexCoord;
-#else
-centroid varying vec2 varTexCoord;
+#ifdef USE_SKINNING
+layout (std140) uniform JointMatrices {
+	mat4 joints[MAX_JOINTS];
+};
+#endif
+
+CENTROID_ VARYING_ mediump vec2 varTexCoord;
+#ifdef USE_ARRAY_TEXTURE
+flat VARYING_ uint varTexLayer;
 #endif
 
 vec4 getRelativePosition(in vec4 position)
@@ -40,10 +45,31 @@ vec4 applyPerspectiveDistortion(in vec4 position)
 
 void main()
 {
-	vec4 pos = LightMVP * inVertexPosition;
+#ifdef USE_SKINNING
+	uvec4 jids = inVertexJointIDs;
+	vec4 skinPos = inVertexPosition;
+	// Alternatively: Introduce neutral bone at index 0 with identity matrix?
+	if (inVertexWeights != vec4(0.0)) {
+		// Note that this deals correctly with a disabled vertex attribute.
+		mat4 mSkin =
+				inVertexWeights.x * joints[jids.x] +
+				inVertexWeights.y * joints[jids.y] +
+				inVertexWeights.z * joints[jids.z] +
+				inVertexWeights.w * joints[jids.w];
+		skinPos = vec4((mSkin * vec4(inVertexPosition.xyz, 1.0)).xyz, 1.0);
+	}
+#else
+	vec4 skinPos = inVertexPosition;
+#endif
+
+	vec4 pos = LightMVP * skinPos;
 
 	tPos = applyPerspectiveDistortion(pos);
 
 	gl_Position = vec4(tPos.xyz, 1.0);
-	varTexCoord = (mTexture * vec4(inTexCoord0.xy, 0.0, 1.0)).xy;
+
+	varTexCoord = (mTexture * vec4(inTexCoord0.xy, 1.0, 1.0)).st;
+#ifdef USE_ARRAY_TEXTURE
+	varTexLayer = inVertexAux;
+#endif
 }

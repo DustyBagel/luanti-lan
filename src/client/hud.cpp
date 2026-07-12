@@ -4,7 +4,7 @@
 // Copyright (C) 2010-2013 blue42u, Jonathon Anderson <anderjon@umail.iu.edu>
 // Copyright (C) 2010-2013 kwolekr, Ryan Kwolek <kwolekr@minetest.net>
 
-#include "client/hud.h"
+#include "hud.h"
 #include <string>
 #include <iostream>
 #include <cmath>
@@ -14,7 +14,6 @@
 #include "client.h"
 #include "inventory.h"
 #include "shader.h"
-#include "client/tile.h"
 #include "localplayer.h"
 #include "camera.h"
 #include "fontengine.h"
@@ -28,6 +27,7 @@
 #include "irrlicht_changes/CGUITTFont.h"
 #include "gui/drawItemStack.h"
 #include <ICameraSceneNode.h>
+#include <IMesh.h>
 
 #define OBJECT_CROSSHAIR_LINE_SIZE 8
 #define CROSSHAIR_LINE_SIZE 10
@@ -308,7 +308,11 @@ void Hud::drawItems(v2s32 screen_pos, v2s32 screen_offset, s32 itemcount, v2f al
 
 bool Hud::hasElementOfType(HudElementType type)
 {
-	for (HudElement *e : player->getHudElements()) {
+	for (auto const &e : player->hud.getElements()) {
+		if (e && e->type == type)
+			return true;
+	}
+	for (auto const &e : player->csm_hud.getElements()) {
 		if (e && e->type == type)
 			return true;
 	}
@@ -335,17 +339,21 @@ bool Hud::calculateScreenPos(const v3s16 &camera_offset, HudElement *e, v2s32 *p
 	return true;
 }
 
-void Hud::drawLuaElements(const v3s16 &camera_offset)
+void Hud::drawLuaElements(const v3s16 &camera_offset, bool only_unhidable)
 {
 	const u32 text_height = g_fontengine->getTextHeight();
 	gui::IGUIFont *const font = g_fontengine->getFont();
 
 	std::vector<HudElement*> elems;
 
-	elems.reserve(player->getHudElements().size());
-	for (HudElement *e : player->getHudElements()) {
+	elems.reserve(player->hud.getElements().size() + player->csm_hud.getElements().size());
+	for (auto const &e : player->hud.getElements()) {
 		if (e)
-			elems.push_back(e);
+			elems.push_back(e.get());
+	}
+	for (auto const &e : player->csm_hud.getElements()) {
+		if (e)
+			elems.push_back(e.get());
 	}
 
 	// Add builtin elements if the server doesn't send them.
@@ -354,12 +362,12 @@ void Hud::drawLuaElements(const v3s16 &camera_offset)
 	HudElement hotbar;
 	if (client->getProtoVersion() < 44 && (player->hud_flags & HUD_FLAG_MINIMAP_VISIBLE)) {
 		minimap = {HUD_ELEM_MINIMAP, v2f(1, 0), "", v2f(), "", 0 , 0, 0, v2f(-1, 1),
-				v2f(-10, 10), v3f(), v2s32(256, 256), 0, "", 0};
+				v2f(-10, 10), v3f(), v2f(256.0f, 256.0f), 0, "", 0};
 		elems.push_back(&minimap);
 	}
 	if (client->getProtoVersion() < 46 && player->hud_flags & HUD_FLAG_HOTBAR_VISIBLE) {
 		hotbar = {HUD_ELEM_HOTBAR, v2f(0.5, 1), "", v2f(), "", 0 , 0, 0, v2f(0, -1),
-				v2f(0, -4), v3f(), v2s32(), 0, "", 0};
+				v2f(0, -4), v3f(), v2f(), 0, "", 0};
 		elems.push_back(&hotbar);
 	}
 
@@ -370,6 +378,8 @@ void Hud::drawLuaElements(const v3s16 &camera_offset)
 	});
 
 	for (HudElement *e : elems) {
+		if (only_unhidable && e->hideable)
+			continue;
 
 		v2s32 pos(floor(e->pos.X * (float) m_screensize.X + 0.5),
 				floor(e->pos.Y * (float) m_screensize.Y + 0.5));
@@ -394,15 +404,21 @@ void Hud::drawLuaElements(const v3s16 &camera_offset)
 				if (textfont->getType() == gui::EGFT_CUSTOM)
 					ttfont = static_cast<gui::CGUITTFont *>(textfont);
 
-				video::SColor color(255, (e->number >> 16) & 0xFF,
-										 (e->number >> 8)  & 0xFF,
-										 (e->number >> 0)  & 0xFF);
+				u32 num = e->number;
+				u8 alpha = (num >> 24) & 0xFF;
+				if (alpha == 0)
+					alpha = 0xFF; // Backwards compatibility
+
+				video::SColor color = video::SColor(alpha,
+						(num >> 16) & 0xFF,
+						(num >> 8)  & 0xFF,
+						(num >> 0)  & 0xFF);
+
 				EnrichedString text(unescape_string(utf8_to_wide(e->text)), color);
 				core::dimension2d<u32> textsize = textfont->getDimension(text.c_str());
 
 				v2s32 offset(0, (e->align.Y - 1.0) * (textsize.Height / 2));
-				core::rect<s32> size(0, 0, e->scale.X * m_scale_factor,
-						text_height * e->scale.Y * m_scale_factor);
+				core::rect<s32> size(0, 0, m_scale_factor, text_height * m_scale_factor);
 				v2s32 offs(e->offset.X * m_scale_factor,
 						e->offset.Y * m_scale_factor);
 
@@ -643,7 +659,7 @@ void Hud::drawCompassRotate(HudElement *e, video::ITexture *texture,
 
 void Hud::drawStatbar(v2s32 pos, u16 corner, u16 drawdir,
 		const std::string &texture, const std::string &bgtexture,
-		s32 count, s32 maxcount, v2s32 offset, v2s32 size)
+		s32 count, s32 maxcount, v2s32 offset, v2f size)
 {
 	const video::SColor color(255, 255, 255, 255);
 	const video::SColor colors[] = {color, color, color, color};
@@ -659,7 +675,7 @@ void Hud::drawStatbar(v2s32 pos, u16 corner, u16 drawdir,
 
 	core::dimension2di srcd(stat_texture->getOriginalSize());
 	core::dimension2di dstd;
-	if (size == v2s32()) {
+	if (size == v2f()) {
 		dstd = srcd;
 		dstd.Height *= m_scale_factor;
 		dstd.Width  *= m_scale_factor;

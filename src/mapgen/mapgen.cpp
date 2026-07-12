@@ -10,21 +10,16 @@
 #include "noise.h"
 #include "gamedef.h"
 #include "mg_biome.h"
-#include "mapblock.h"
 #include "mapnode.h"
 #include "map.h"
 #include "nodedef.h"
 #include "emerge.h"
 #include "voxelalgorithms.h"
-#include "porting.h"
 #include "profiler.h"
 #include "settings.h"
 #include "treegen.h"
-#include "serialization.h"
-#include "util/serialize.h"
 #include "util/numeric.h"
 #include "util/directiontables.h"
-#include "filesys.h"
 #include "log.h"
 #include "mapgen_carpathian.h"
 #include "mapgen_flat.h"
@@ -144,7 +139,9 @@ const char *Mapgen::getMapgenName(MapgenType mgtype)
 	if (index == MAPGEN_INVALID || index >= ARRLEN(g_reg_mapgens))
 		return "invalid";
 
-	return g_reg_mapgens[index].name;
+	auto &it = g_reg_mapgens[index];
+	assert(it.name);
+	return it.name;
 }
 
 
@@ -447,7 +444,7 @@ void Mapgen::lightSpread(VoxelArea &a, std::queue<std::pair<v3s16, u8>> &queue,
 	if (light_night > 0)
 		light_night -= 0x10;
 
-	// Bail out only if we have no more light from either bank to propogate, or
+	// Bail out only if we have no more light from either bank to propagate, or
 	// we hit a solid block that light cannot pass through.
 	if ((light_day  <= (n.param1 & 0x0F) &&
 			light_night <= (n.param1 & 0xF0)) ||

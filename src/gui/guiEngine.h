@@ -9,12 +9,14 @@
 /******************************************************************************/
 #include "irrlichttypes.h"
 #include "guiFormSpecMenu.h"
+#include "statusTextHelper.h"
 #include "client/clouds.h"
 #include "client/sound.h"
 #include "util/enriched_string.h"
 #include "translation.h"
 
 #include <csignal>
+#include <memory>
 
 /******************************************************************************/
 /* Structs and macros                                                         */
@@ -62,6 +64,11 @@ public:
 	 */
 	void gotText(const StringMap &fields);
 
+	/**
+	 * Request a screenshot from the main menu
+	 */
+	void requestScreenshot();
+
 private:
 	/** target to transmit data to */
 	GUIEngine *m_engine = nullptr;
@@ -104,7 +111,7 @@ protected:
 			std::vector<std::string> &paths) override;
 };
 
-/** implementation of main menu based uppon formspecs */
+/** implementation of main menu based upon formspecs */
 class GUIEngine {
 	/** grant ModApiMainMenu access to private members */
 	friend class ModApiMainMenu;
@@ -120,8 +127,7 @@ public:
 	 * @param smgr scene manager to add scene elements to
 	 * @param data struct to transfer data to main game handling
 	 */
-	GUIEngine(JoystickController *joystick,
-			gui::IGUIElement *parent,
+	GUIEngine(gui::IGUIElement *parent,
 			RenderingEngine *rendering_engine,
 			IMenuManager *menumgr,
 			MainMenuData *data,
@@ -144,6 +150,14 @@ public:
 	std::string getScriptDir()
 	{
 		return m_scriptdir;
+	}
+
+	/**
+	 * Request taking a screenshot on the next frame
+	 */
+	void requestScreenshot()
+	{
+		m_take_screenshot = true;
 	}
 
 	/**
@@ -198,6 +212,9 @@ private:
 
 	/** variable used to abort menu and return back to main game handling */
 	bool                                  m_startgame = false;
+
+	/** flag to take a screenshot on next frame */
+	bool                                  m_take_screenshot = false;
 
 	/** scripting interface */
 	std::unique_ptr<MainMenuScripting>    m_script;
@@ -257,11 +274,17 @@ private:
 	/** and text that is in it */
 	EnrichedString m_toplefttext;
 
+	/** status message element for menu notifications */
+	std::unique_ptr<StatusTextHelper> m_status_text;
+
 	/** do preprocessing for cloud subsystem */
 	void drawClouds(float dtime);
 
 	/** is drawing of clouds enabled atm */
 	bool m_clouds_enabled = true;
+
+	void setMenuCloudsColor(video::SColor color);
+	void setMenuSkyColor(video::SColor color);
 
 	static void fullscreenChangedCallback(const std::string &name, void *data);
 };

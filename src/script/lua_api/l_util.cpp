@@ -7,7 +7,6 @@
 #include "lua_api/l_settings.h"
 #include "common/c_converter.h"
 #include "common/c_content.h"
-#include "cpp_api/s_async.h"
 #include "network/networkprotocol.h"
 #include "serialization.h"
 #include <json/json.h>
@@ -15,7 +14,6 @@
 #include "cpp_api/s_security.h"
 #include "porting.h"
 #include "convert_json.h"
-#include "debug.h"
 #include "log.h"
 #include "log_internal.h"
 #include "tool.h"
@@ -30,6 +28,7 @@
 #include "util/png.h"
 #include "player.h"
 #include "daynightratio.h"
+#include "constants.h"
 #include <cstdio>
 
 // only available in zstd 1.3.5+
@@ -79,6 +78,16 @@ int ModApiUtil::l_get_us_time(lua_State *L)
 {
 	NO_MAP_LOCK_REQUIRED;
 	lua_pushnumber(L, porting::getTimeUs());
+	return 1;
+}
+
+// get_us_time() for SSCSM
+int ModApiUtil::l_get_us_time_sscsm(lua_State *L)
+{
+	NO_MAP_LOCK_REQUIRED;
+	auto t = porting::getTimeUs();
+	t = t - t % SSCSM_CLOCK_RESOLUTION_US;
+	lua_pushnumber(L, t);
 	return 1;
 }
 
@@ -197,12 +206,12 @@ int ModApiUtil::l_get_dig_params(lua_State *L)
 int ModApiUtil::l_get_hit_params(lua_State *L)
 {
 	NO_MAP_LOCK_REQUIRED;
-	std::unordered_map<std::string, int> groups;
+	ItemGroupList groups;
 	read_groups(L, 1, groups);
 	ToolCapabilities tp = read_tool_capabilities(L, 2);
 	float time_from_last_punch = readParam<float>(L, 3, 1000000);
 	int wear = readParam<int>(L, 4, 0);
-	push_hit_params(L, getHitParams(groups, &tp,
+	push_hit_params(L, getHitParams(groups, tp,
 		time_from_last_punch, wear));
 	return 1;
 }
@@ -263,6 +272,21 @@ int ModApiUtil::l_is_yes(lua_State *L)
 	return 1;
 }
 
+// path_exists(path)
+int ModApiUtil::l_path_exists(lua_State *L)
+{
+	NO_MAP_LOCK_REQUIRED;
+
+	std::string path = luaL_checkstring(L, 1); //path
+
+	CHECK_SECURE_PATH(L, path.c_str(), false);
+
+	bool exists = fs::PathExists(path);
+	lua_pushboolean(L, exists);
+
+	return 1;
+}
+
 // get_builtin_path()
 int ModApiUtil::l_get_builtin_path(lua_State *L)
 {
@@ -288,12 +312,14 @@ int ModApiUtil::l_get_user_path(lua_State *L)
 enum LuaCompressMethod
 {
 	LUA_COMPRESS_METHOD_DEFLATE,
+	LUA_COMPRESS_METHOD_RAW_DEFLATE,
 	LUA_COMPRESS_METHOD_ZSTD,
 };
 
 static const struct EnumString es_LuaCompressMethod[] =
 {
 	{LUA_COMPRESS_METHOD_DEFLATE, "deflate"},
+	{LUA_COMPRESS_METHOD_RAW_DEFLATE, "raw_deflate"},
 	{LUA_COMPRESS_METHOD_ZSTD, "zstd"},
 	{0, nullptr},
 };
@@ -324,12 +350,13 @@ int ModApiUtil::l_compress(lua_State *L)
 
 	std::ostringstream os(std::ios_base::binary);
 
-	if (method == LUA_COMPRESS_METHOD_DEFLATE) {
+	if (method == LUA_COMPRESS_METHOD_DEFLATE ||
+			method == LUA_COMPRESS_METHOD_RAW_DEFLATE) {
 		int level = -1;
 		if (!lua_isnoneornil(L, 3))
 			level = readParam<int>(L, 3);
 
-		compressZlib(data, os, level);
+		compressZlib(data, os, level, method == LUA_COMPRESS_METHOD_RAW_DEFLATE);
 	} else if (method == LUA_COMPRESS_METHOD_ZSTD) {
 		int level = ZSTD_CLEVEL_DEFAULT;
 		if (!lua_isnoneornil(L, 3))
@@ -357,8 +384,9 @@ int ModApiUtil::l_decompress(lua_State *L)
 	std::istringstream is(std::string(data), std::ios_base::binary);
 	std::ostringstream os(std::ios_base::binary);
 
-	if (method == LUA_COMPRESS_METHOD_DEFLATE) {
-		decompressZlib(is, os);
+	if (method == LUA_COMPRESS_METHOD_DEFLATE ||
+			method == LUA_COMPRESS_METHOD_RAW_DEFLATE) {
+		decompressZlib(is, os, 0, method == LUA_COMPRESS_METHOD_RAW_DEFLATE);
 	} else if (method == LUA_COMPRESS_METHOD_ZSTD) {
 		decompressZstd(is, os);
 	}
@@ -458,7 +486,7 @@ int ModApiUtil::l_get_dir_list(lua_State *L)
 {
 	NO_MAP_LOCK_REQUIRED;
 	const char *path = luaL_checkstring(L, 1);
-	bool list_all = !lua_isboolean(L, 2); // if its not a boolean list all
+	bool list_all = !lua_isboolean(L, 2); // if it's not a boolean list all
 	bool list_dirs = readParam<bool>(L, 2); // true: list dirs, false: list files
 
 	CHECK_SECURE_PATH(L, path, false);
@@ -724,6 +752,8 @@ void ModApiUtil::Initialize(lua_State *L, int top)
 
 	API_FCT(is_yes);
 
+	API_FCT(path_exists);
+
 	API_FCT(get_builtin_path);
 	API_FCT(get_user_path);
 
@@ -798,6 +828,37 @@ void ModApiUtil::InitializeClient(lua_State *L, int top)
 	lua_setfield(L, top, "settings");
 }
 
+void ModApiUtil::InitializeSSCSM(lua_State *L, int top)
+{
+	API_FCT(log);
+
+	registerFunction(L, "get_us_time", l_get_us_time_sscsm, top);
+
+	API_FCT(parse_json);
+	API_FCT(write_json);
+
+	API_FCT(is_yes);
+
+	API_FCT(compress);
+	API_FCT(decompress);
+
+	API_FCT(encode_base64);
+	API_FCT(decode_base64);
+
+	API_FCT(get_version);
+	API_FCT(sha1);
+	API_FCT(sha256);
+	API_FCT(colorspec_to_colorstring);
+	API_FCT(colorspec_to_bytes);
+	API_FCT(colorspec_to_table);
+	API_FCT(time_to_day_night_ratio);
+
+	API_FCT(get_last_run_mod);
+	API_FCT(set_last_run_mod);
+
+	API_FCT(urlencode);
+}
+
 void ModApiUtil::InitializeAsync(lua_State *L, int top)
 {
 	API_FCT(log);
@@ -808,6 +869,8 @@ void ModApiUtil::InitializeAsync(lua_State *L, int top)
 	API_FCT(write_json);
 
 	API_FCT(is_yes);
+
+	API_FCT(path_exists);
 
 	API_FCT(get_builtin_path);
 	API_FCT(get_user_path);

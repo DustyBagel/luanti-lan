@@ -1,4 +1,14 @@
+
+include(CheckCXXSourceCompiles)
+include(CheckCXXCompilerFlag)
+
+set(DEFAULT_SDL3 OFF)
+
 option(USE_SDL2_STATIC "Link with SDL2 static libraries" FALSE)
+
+option(USE_SDL3 "Use the SDL3 backend instead of SDL2" ${DEFAULT_SDL3})
+option(USE_SDL3_STATIC "Link with SDL3 static libraries" FALSE)
+
 
 # Compiler flags
 
@@ -13,10 +23,15 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang|AppleClang)$")
 
 	add_compile_options(-Wall -pipe)
 
+	# if possible, error on struct/class keyword missmatch
+	check_cxx_compiler_flag("-Werror=mismatched-tags" SUPPORTS_W_MISMATCHED_TAGS)
+	if(SUPPORTS_W_MISMATCHED_TAGS)
+		add_compile_options("-Werror=mismatched-tags")
+	endif()
+
 	# Enable SSE for floating point math on 32-bit x86 by default
 	# reasoning see minetest issue #11810 and https://gcc.gnu.org/wiki/FloatingPointMath
 	if(CMAKE_SIZEOF_VOID_P EQUAL 4)
-		include(CheckCXXSourceCompiles)
 		check_cxx_source_compiles("#ifndef __i686__\n#error\n#endif\nint main(){}" IS_I686)
 		if(IS_I686)
 			message(STATUS "Detected Intel x86: using SSE instead of x87 FPU")
@@ -30,6 +45,7 @@ elseif(MSVC)
 	add_compile_definitions(
 		# Suppress some useless warnings
 		_CRT_SECURE_NO_DEPRECATE
+		_CRT_SECURE_NO_WARNINGS
 		# Get M_PI to work
 		_USE_MATH_DEFINES
 		# Don't define min/max macros in minwindef.h
@@ -44,9 +60,6 @@ elseif(MSVC)
 		add_compile_options(/arch:SSE)
 	endif()
 endif()
-
-# Platform-independent configuration (hard-coded currently)
-add_compile_definitions(IRR_ENABLE_BUILTIN_FONT)
 
 # Platform-specific configuration
 
@@ -64,20 +77,10 @@ elseif(ANDROID)
 	add_compile_definitions(_IRR_ANDROID_PLATFORM_)
 elseif(EMSCRIPTEN)
 	add_compile_definitions(_IRR_EMSCRIPTEN_PLATFORM_ _IRR_COMPILE_WITH_EGL_MANAGER_)
-	set(LINUX_PLATFORM TRUE)
 elseif(SOLARIS)
 	add_compile_definitions(_IRR_SOLARIS_PLATFORM_ _IRR_POSIX_API_)
 else()
 	add_compile_definitions(_IRR_POSIX_API_)
-	set(LINUX_PLATFORM TRUE)
-endif()
-
-if(LINUX_PLATFORM)
-	add_compile_definitions(_IRR_LINUX_PLATFORM_)
-endif()
-
-if(MSVC)
-	add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
 endif()
 
 add_compile_definitions("_IRR_COMPILE_WITH_SDL_DEVICE_")
@@ -98,7 +101,7 @@ option(ENABLE_OPENGL3 "Enable OpenGL 3+" ${DEFAULT_OPENGL3})
 if(ANDROID OR EMSCRIPTEN)
 	set(ENABLE_OPENGL FALSE)
 else()
-	option(ENABLE_OPENGL "Enable OpenGL" TRUE)
+	option(ENABLE_OPENGL "Enable legacy OpenGL" TRUE)
 endif()
 
 if(APPLE)
@@ -142,31 +145,44 @@ endif()
 
 # Configuration report
 
-message(STATUS "OpenGL: ${ENABLE_OPENGL}")
+message(STATUS "OpenGL (legacy): ${ENABLE_OPENGL}")
 message(STATUS "OpenGL 3: ${ENABLE_OPENGL3}")
-if (ENABLE_GLES2)
-	message(STATUS "OpenGL ES 2: ON (unified)")
-else()
-	message(STATUS "OpenGL ES 2: OFF")
-endif()
+message(STATUS "OpenGL ES 2: ${ENABLE_GLES2}")
 #message(STATUS "WebGL: ${ENABLE_WEBGL1}")
 
 # Required libs
-
-include(CheckCXXSourceCompiles)
 
 find_package(ZLIB REQUIRED)
 find_package(JPEG REQUIRED)
 find_package(PNG REQUIRED)
 
-if(ENABLE_GLES2)
-	find_package(OpenGLES2 REQUIRED)
-endif()
-if(ENABLE_OPENGL)
+if(OPENGL_DIRECT_LINK)
 	find_package(OpenGL REQUIRED)
 endif()
+
+if(EMSCRIPTEN)
+	find_path(EGL_INCLUDE_DIR EGL/egl.h)
+	find_library(EGL_LIBRARY NAMES EGL)
+endif()
+
 set(USE_SDL2_SHARED FALSE)
-if(TRUE)
+if(USE_SDL3)
+	set(USE_SDL2_STATIC FALSE) # do not attempt to link against SDL2
+
+	# https://wiki.libsdl.org/SDL3/README-cmake#a-system-sdl-library
+	if(USE_SDL3_STATIC)
+		set(SDL3_SUFFIX "static")
+	else()
+		set(SDL3_SUFFIX "shared")
+	endif()
+	find_package(SDL3 REQUIRED CONFIG REQUIRED COMPONENTS SDL3-${SDL3_SUFFIX})
+	message(STATUS "Found SDL3: ${SDL3_VERSION} (${SDL3_SUFFIX} library)")
+
+	# https://github.com/libsdl-org/SDL/blob/release-3.2.x/include/SDL3/SDL_opengl_glext.h#L2859
+	set(USE_SDL_OPENGL_4_5_HEADER TRUE)
+else()
+	# Fall back to SDL2
+
 	if(NOT USE_SDL2_STATIC)
 		set(USE_SDL2_SHARED TRUE)
 	endif()
@@ -199,20 +215,22 @@ endif()
 
 # More special config
 
-if(ENABLE_OPENGL)
-	# The legacy GL driver requires some symbols from GL 4.5 to compile,
-	# which SDL only provides since 2.26.0 (Nov 2022).
-	# We have a fallback in case this isn't satisfied so test for it.
+if(USE_SDL2 AND ENABLE_OPENGL)
 	set(CMAKE_REQUIRED_INCLUDES ${SDL2_INCLUDE_DIRS})
-	unset(CHECK_GL_VERSION_4_5 CACHE)
+	unset(USE_SDL_OPENGL_4_5_HEADER CACHE) # Why?
 	check_cxx_source_compiles("#include <SDL_opengl.h>\n\
 #ifndef GL_VERSION_4_5\n\
 #error\n\
 #endif\n\
-int main() {}" CHECK_GL_VERSION_4_5)
-	if(CHECK_GL_VERSION_4_5)
-		add_compile_definitions(IRR_PREFER_SDL_GL_HEADER)
-	endif()
+int main() {}" USE_SDL_OPENGL_4_5_HEADER)
+endif()
+
+if(USE_SDL_OPENGL_4_5_HEADER)
+	# The legacy GL driver requires some symbols from GL 4.5 to compile,
+	# which SDL only provides since 2.26.0 (Nov 2022).
+	# We have a fallback in case this isn't satisfied so test for it.
+	add_compile_definitions(IRR_PREFER_SDL_GL_HEADER)
+	message(STATUS "Using SDL OpenGL header")
 endif()
 
 # Platform-specific libs
@@ -228,10 +246,9 @@ set(link_includes
 	"${ZLIB_INCLUDE_DIR}"
 	"${JPEG_INCLUDE_DIR}"
 	"${PNG_INCLUDE_DIR}"
-	"${SDL2_INCLUDE_DIRS}"
+	"$<$<NOT:$<BOOL:${USE_SDL3}>>:${SDL2_INCLUDE_DIRS}>"
 
 	${OPENGL_INCLUDE_DIR}
-	${OPENGLES2_INCLUDE_DIR}
 	${EGL_INCLUDE_DIR}
 )
 
@@ -252,9 +269,11 @@ set(IRRMESHLOADER
 add_library(IRRMESHOBJ OBJECT
 	CMeshSceneNode.h
 
+	WeightBuffer.cpp
 	SkinnedMesh.cpp
 	CMeshSceneNode.cpp
 	AnimatedMeshSceneNode.cpp
+	AnimSpec.cpp
 
 	${IRRMESHLOADER}
 )
@@ -270,9 +289,10 @@ set(IRRDRVROBJ
 	CEGLManager.cpp
 	CSDLManager.cpp
 	mt_opengl_loader.cpp
+	HWBuffer.cpp
 )
 
-# the two legacy drivers
+# the legacy driver
 
 if(ENABLE_OPENGL)
 	set(IRRDRVROBJ
@@ -302,7 +322,7 @@ if(ENABLE_OPENGL3 OR ENABLE_GLES2)
 		OpenGL/FixedPipelineRenderer.cpp
 		OpenGL/MaterialRenderer.cpp
 		OpenGL/Renderer2D.cpp
-		OpenGL/VBO.cpp
+		OpenGL/BufferObject.cpp
 	)
 endif()
 
@@ -387,6 +407,12 @@ if(APPLE)
 	set_target_properties(IRROTHEROBJ PROPERTIES COMPILE_OPTIONS "-xobjective-c++")
 endif()
 
+if(USE_SDL3)
+	include_directories(IRROTHEROBJ $<TARGET_PROPERTY:SDL3::Headers,INTERFACE_INCLUDE_DIRECTORIES>)
+	target_compile_definitions(IRROTHEROBJ PRIVATE _IRR_USE_SDL3_)
+	target_compile_definitions(IRRVIDEOOBJ PRIVATE _IRR_USE_SDL3_) # OpenGL/Common.h
+endif()
+
 add_library(IRRGUIOBJ OBJECT
 	CGUIButton.h
 	CGUICheckBox.h
@@ -396,7 +422,6 @@ add_library(IRRGUIOBJ OBJECT
 	CGUIFont.h
 	CGUIImage.h
 	CGUIListBox.h
-	CGUIScrollBar.h
 	CGUISkin.h
 	CGUIStaticText.h
 	CGUITabControl.h
@@ -485,6 +510,8 @@ target_link_libraries(IrrlichtMt PRIVATE
 	"$<$<BOOL:${USE_SDL2_SHARED}>:SDL2::SDL2>"
 	"$<$<BOOL:${USE_SDL2_STATIC}>:SDL2::SDL2-static>"
 
+	"$<$<BOOL:${USE_SDL3}>:SDL3::SDL3-${SDL3_SUFFIX}>"
+
 	"$<$<BOOL:${OPENGL_DIRECT_LINK}>:${OPENGL_LIBRARIES}>"
 	${EGL_LIBRARY}
 
@@ -497,7 +524,4 @@ if(WIN32)
 endif()
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
 	target_compile_definitions(IrrlichtMt INTERFACE _DEBUG)
-endif()
-if(APPLE OR ANDROID OR EMSCRIPTEN)
-	target_compile_definitions(IrrlichtMt PUBLIC IRR_MOBILE_PATHS)
 endif()

@@ -10,7 +10,7 @@
 #include "common/c_converter.h"
 #include "client/client.h"
 #include "client/sound.h"
-#include "sound.h"
+#include "sound_spec.h"
 
 /* ModApiClientSound */
 
@@ -52,9 +52,27 @@ int ModApiClientSound::l_sound_play(lua_State *L)
 	return 1;
 }
 
+// debug_print_playing_sounds()
+int ModApiClientSound::l_debug_print_playing_sounds(lua_State *L)
+{
+	Client *client = getClient(L);
+
+	if (!client->checkPrivilege("debug")) {
+		warningstream << "core.debug_print_playing_sounds(): Missing priv: debug"
+				<< std::endl;
+		return 0;
+	}
+
+	ISoundManager *sound_manager = client->getSoundManager();
+	sound_manager->printPlayingSounds();
+
+	return 0;
+}
+
 void ModApiClientSound::Initialize(lua_State *L, int top)
 {
 	API_FCT(sound_play);
+	API_FCT(debug_print_playing_sounds);
 }
 
 /* ClientSoundHandle */
