@@ -1,3 +1,6 @@
+# This whole file might be unnecessary, but I have no idea what I'm doing
+# so it's going to stay for now.
+
 cmake_minimum_required(VERSION 3.0)
 project(mdns VERSION 1.4.2 LANGUAGES C)
 
@@ -29,23 +32,23 @@ install(
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 include(CMakePackageConfigHelpers)
-if(${CMAKE_VERSION} VERSION_LESS 3.14)
-  write_basic_package_version_file(
-    "${PROJECT_NAME}ConfigVersion.cmake"
-    VERSION ${PROJECT_VERSION}
-    COMPATIBILITY SameMajorVersion)
-else()
-  write_basic_package_version_file(
-    "ConfigVersion.cmake"
-    VERSION ${PROJECT_VERSION}
-    COMPATIBILITY SameMajorVersion
-    ARCH_INDEPENDENT)
-endif()
+#if(${CMAKE_VERSION} VERSION_LESS 3.14)
+#  write_basic_package_version_file(
+#    "${PROJECT_NAME}ConfigVersion.cmake"
+#    VERSION ${PROJECT_VERSION}
+#    COMPATIBILITY SameMajorVersion)
+#else()
+#  write_basic_package_version_file(
+#    "ConfigVersion.cmake"
+#    VERSION ${PROJECT_VERSION}
+#    COMPATIBILITY SameMajorVersion
+#    ARCH_INDEPENDENT)
+#endif()
 
-configure_package_config_file(
-  "${PROJECT_SOURCE_DIR}/Config.cmake.in"
-  "${PROJECT_BINARY_DIR}/Config.cmake" INSTALL_DESTINATION
-  ${CMAKE_INSTALL_DATAROOTDIR}/cmake/${PROJECT_NAME})
+#configure_package_config_file(
+#  "${PROJECT_SOURCE_DIR}/Config.cmake.in"
+#  "${PROJECT_BINARY_DIR}/Config.cmake" INSTALL_DESTINATION
+#  ${CMAKE_INSTALL_DATAROOTDIR}/cmake/${PROJECT_NAME})
 
 install(
   EXPORT ${PROJECT_NAME}_Targets

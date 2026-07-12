@@ -34,7 +34,9 @@ bool lan_fresh() {
 	lan_adv_client.fresh = false;
 	return result;
 }
-static Json::Value getServerData(AnnounceAction action,
+
+#if USE_CURL
+void sendAnnounce(AnnounceAction action,
 		const u16 port,
 		const std::vector<std::string> &clients_names,
 		const double uptime,
@@ -98,23 +100,6 @@ static Json::Value getServerData(AnnounceAction action,
 		infostream << "Announcing " << aa_names[action] << " to " <<
 			g_settings->get("serverlist_url") << std::endl;
 	}
-	return server;
-}
-#if USE_CURL
-void sendAnnounce(AnnounceAction action,
-		const u16 port,
-		const std::vector<std::string> &clients_names,
-		const double uptime,
-		const u32 game_time,
-		const float lag,
-		const std::string &gameid,
-		const std::string &mg_name,
-		const std::vector<ModSpec> &mods,
-		bool dedicated)
-{
-	Json::Value server = getServerData(action, port,
-			clients_names, uptime, game_time, lag,
-			gameid, mg_name, mods, dedicated);
 
 	HTTPFetchRequest fetch_request;
 	fetch_request.caller = HTTPFETCH_PRINT_ERR;

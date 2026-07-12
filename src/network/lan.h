@@ -30,12 +30,12 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include "threading/thread.h"
 #include "network/address.h"
 
-class lan_adv : public Thread
+class lan_adv_server : public Thread
 {
 public:
 	void *run();
 
-	lan_adv();
+	lan_adv_server();
 	void ask();
 
 	void serve(Address addr, u16 proto_min, u16 proto_max);
@@ -50,6 +50,20 @@ public:
 private:
 	std::string address = "";
 	unsigned short server_port = 0;
-	int socket = -1;
+	int sockets[32];
+	int open_sockets = 0;
 	std::unordered_map<std::string, Json::Value> servers = {};
 };
+
+class lan_adv_client : public Thread
+{
+	public:
+		lan_adv_client();
+		~lan_adv_client();
+		void *run();
+
+		std::map<std::string, Json::Value> server_data;
+	private:
+		int sockets[32];
+		int open_sockets = 0;
+}
