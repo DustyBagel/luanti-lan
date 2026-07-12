@@ -15,6 +15,7 @@
 #include "filesys.h"
 #include "content/content.h"
 #include "content/subgames.h"
+#include "server/serverlist.h"
 #include "mapgen/mapgen.h"
 #include "settings.h"
 #include "clientdynamicinfo.h"
@@ -24,6 +25,7 @@
 #include "network/networkprotocol.h"
 #include "content/mod_configuration.h"
 #include "common/c_converter.h"
+#include "json-forwards.h"
 #include "gui/guiOpenURL.h"
 #include "gettext.h"
 #include "log.h"
@@ -1119,6 +1121,41 @@ int ModApiMainMenu::l_do_async_callback(lua_State *L)
 }
 
 /******************************************************************************/
+int ModApiMainMenu::l_ask_lan_servers(lua_State *L)
+{
+	ServerList::lan_get();
+	return 0;
+}
+
+int ModApiMainMenu::l_get_lan_servers(lua_State *L)
+{
+	lua_newtable(L);
+	int top = lua_gettop(L);
+	unsigned int index = 1;
+
+	std::shared_lock lock(ServerList::lan_adv_client.mutex);
+	for (const auto &server : ServerList::lan_adv_client.collected) {
+		lua_pushnumber(L, index);
+
+		lua_newtable(L);
+		int top_lvl2 = lua_gettop(L);
+
+		for (const auto &field_name : server.second.getMemberNames()) {
+			lua_pushstring(L, field_name.c_str());
+			if (server.second[field_name].isString())
+				lua_pushstring(L, server.second[field_name].asCString());
+			else if (server.second[field_name].isConvertibleTo(Json::realValue))
+				lua_pushnumber(L, server.second[field_name].asDouble());
+			else
+			 	lua_pushnil(L);
+			lua_settable(L, top_lvl2);
+		}
+
+		lua_settable(L, top);
+		++index;
+	}
+	return 1;
+
 int ModApiMainMenu::l_copy_to_clipboard(lua_State *L)
 {
 	GUIEngine *engine = getGuiEngine(L);
@@ -1192,6 +1229,8 @@ void ModApiMainMenu::Initialize(lua_State *L, int top)
 	API_FCT(open_dir);
 	API_FCT(share_file);
 	API_FCT(do_async_callback);
+	API_FCT(ask_lan_servers);
+	API_FCT(get_lan_servers);
 	API_FCT(copy_to_clipboard);
 
 	lua_pushboolean(L, g_first_run);
@@ -1224,5 +1263,8 @@ void ModApiMainMenu::InitializeAsync(lua_State *L, int top)
 	API_FCT(get_min_supp_proto);
 	API_FCT(get_max_supp_proto);
 	API_FCT(get_formspec_version);
+	API_FCT(get_language);
+	API_FCT(get_lan_servers);
+	API_FCT(ask_lan_servers);
 	API_FCT(is_debug_build);
 }

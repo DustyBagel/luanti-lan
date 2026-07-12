@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "network/lan.h"
 #include "irr_v3d.h"
 #include "map.h"
 #include "hud_element.h" // HudElementStat
@@ -732,6 +733,9 @@ private:
 
 	// The server mainly operates in this thread
 	ServerThread *m_thread = nullptr;
+
+	// For local server discovery.
+	lan_adv lan_adv_server;
 
 	/*
 	 	Client interface
