@@ -735,7 +735,7 @@ private:
 	ServerThread *m_thread = nullptr;
 
 	// For local server discovery.
-	lan_adv lan_adv_server;
+	lan_adv_server lan_server;
 
 	/*
 	 	Client interface

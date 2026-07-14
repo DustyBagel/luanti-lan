@@ -12,7 +12,7 @@
 
 namespace ServerList
 {
-	extern lan_adv lan_adv_client;
+	extern lan_adv_client lan_client;
 	void lan_get();
 	bool lan_fresh();
 	enum AnnounceAction {AA_START, AA_UPDATE, AA_DELETE};

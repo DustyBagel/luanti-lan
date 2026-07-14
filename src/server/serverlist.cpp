@@ -19,17 +19,17 @@ namespace ServerList
 
 static std::string ask_str;
 
-lan_adv lan_adv_client;
+lan_adv_client lan_client;
 
 void lan_get() {
 	if (!g_settings->getBool("serverlist_lan"))
 		return;
-	lan_adv_client.ask();
+	lan_client.ask();
 }
 
 bool lan_fresh() {
-	auto result = lan_adv_client.fresh.load();
-	lan_adv_client.fresh = false;
+	auto result = lan_client.fresh.load();
+	lan_client.fresh = false;
 	return result;
 }
 
