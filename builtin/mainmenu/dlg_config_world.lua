@@ -11,6 +11,8 @@ local function modname_valid(name)
 end
 
 local function init_data(data)
+	-- Note: `pkgmgr.global_mods` is similar, but without the world + gameid filter.
+
 	data.list = filterlist.create(
 		pkgmgr.preparemodlist,
 		pkgmgr.comparemod,
@@ -193,10 +195,10 @@ local function get_formspec(data)
 	end
 
 	retval = retval ..
-		"button[3.25,7;2.5,0.5;btn_config_world_save;" ..
-		fgettext("Save") .. "]" ..
-		"button[5.75,7;2.5,0.5;btn_config_world_cancel;" ..
+		"button[3.25,7;2.5,0.5;btn_config_world_cancel;" ..
 		fgettext("Cancel") .. "]" ..
+		"button[5.75,7;2.5,0.5;btn_config_world_save;" ..
+		fgettext("Save") .. "]" ..
 		"button[9,7;2.5,0.5;btn_config_world_cdb;" ..
 		fgettext("Find More Mods") .. "]"
 

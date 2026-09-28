@@ -65,7 +65,6 @@ IAnimatedMesh *CXMeshFileLoader::createMesh(io::IReadFile *file)
 #endif
 
 	AnimatedMesh = SkinnedMeshBuilder(SkinnedMesh::SourceFormat::X);
-	AnimatedMesh.addAnimation();
 
 	SkinnedMesh *res = nullptr;
 	if (load(file)) {
@@ -553,6 +552,10 @@ bool CXMeshFileLoader::parseDataObjectMesh(SXMesh &mesh)
 
 	// read faces
 	const u32 nFaces = readInt();
+	if (nFaces > (1U << 28 /* leave a couple bits of wiggle room */)) {
+		os::Printer::log("Too many faces", ELL_ERROR);
+		SET_ERR_AND_RETURN();
+	}
 
 	mesh.Indices.set_used(nFaces * 3);
 	mesh.IndexCountPerFace.set_used(nFaces);
@@ -573,7 +576,13 @@ bool CXMeshFileLoader::parseDataObjectMesh(SXMesh &mesh)
 			// read face indices
 			polygonfaces.set_used(fcnt);
 			u32 triangles = (fcnt - 2);
-			mesh.Indices.set_used(mesh.Indices.size() + ((triangles - 1) * 3));
+			// Compute in u64 to avoid overflows
+			u64 nIndices = mesh.Indices.size() + (u64)(triangles - 1) * 3;
+			if (nIndices > (1U << 28 /* leave a couple bits of wiggle room */)) {
+				os::Printer::log("Too many indices", ELL_ERROR);
+				SET_ERR_AND_RETURN();
+			}
+			mesh.Indices.set_used(nIndices);
 			mesh.IndexCountPerFace[k] = (u16)(triangles * 3);
 
 			for (u32 f = 0; f < fcnt; ++f)
@@ -1883,7 +1892,7 @@ SkinnedMesh::SJoint *CXMeshFileLoader::addJoint(SkinnedMesh::SJoint *parent, std
 
 void CXMeshFileLoader::addKeys(u16 joint_id, SkinnedMesh::Keys &&keys)
 {
-	auto &animation = AnimatedMesh.getAnimation(0);
+	auto &animation = AnimatedMesh.getSingleAnimation();
 	auto &joint_keys_idx = JointKeysIdx.at(joint_id);
 	if (joint_keys_idx) {
 		animation.joint_keys.at(*joint_keys_idx).keys.append(keys);

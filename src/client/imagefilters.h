@@ -38,3 +38,19 @@ video::SColor imageAverageColor(const video::IImage *img);
  * and downscaling.
  */
 void imageScaleNNAA(video::IImage *src, const core::rect<s32> &srcrect, video::IImage *dest);
+
+/* Apply a mask to an image.
+ * The two images must have identical dimensions and color formats.
+ */
+void imageApplyMask(video::IImage *dest, const video::IImage *mask);
+
+/* Returns the dimensions of the new image after applying a transformation.
+ */
+core::dimension2du imageTransformDimension(u32 transform, core::dimension2du dim);
+
+/* Transform the image data using the given transformation.
+ * The destination image must have the correct dimensions, and the same color
+ * format as the source.
+ * transform: [0, 7]
+ */
+void imageTransform(u32 transform, const video::IImage *src, video::IImage *dst);

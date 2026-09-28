@@ -83,7 +83,7 @@ std::vector<VariantTransform> SkinnedMesh::animateMesh(
 		const std::vector<AnimationProgress> &progresses,
 		const std::vector<std::optional<core::Transform>> &old_transforms) const
 {
-	assert(HasAnimation);
+	assert(IsAnimatable);
 
 	std::vector<bool> animated_joints(AllJoints.size(), false);
 	std::vector<VariantTransform> result(AllJoints.size());
@@ -177,7 +177,7 @@ void SkinnedMesh::rigidAnimation(const std::vector<core::matrix4> &global_matric
 
 void SkinnedMesh::skinMesh(const std::vector<core::matrix4> &global_matrices)
 {
-	if (!HasAnimation)
+	if (!IsAnimatable)
 		return;
 
 	// Premultiply with global inversed matrices, if present
@@ -301,8 +301,8 @@ void SkinnedMesh::prepareForSkinning()
 {
 	HasWeights = checkForWeights();
 	// Meshes with weights are animatable (e.g. with bone overrides)
-	HasAnimation = HasWeights || checkForKeys();
-	if (!HasAnimation || PreparedForSkinning)
+	IsAnimatable = HasWeights || checkForKeys();
+	if (!IsAnimatable || PreparedForSkinning)
 		return;
 
 	PreparedForSkinning = true;
@@ -407,6 +407,10 @@ void SkinnedMeshBuilder::topoSortJoints()
 
 	// Levelorder
 	for (u16 i = 0; i < n; ++i) {
+		if (new_to_old_id.size() <= i) {
+			// happens if and only if not all nodes are reachable from a root
+			throw std::runtime_error("joint hierarchy must be acyclic");
+		}
 		new_to_old_id.insert(new_to_old_id.end(),
 				children[new_to_old_id[i]].begin(),
 				children[new_to_old_id[i]].end());

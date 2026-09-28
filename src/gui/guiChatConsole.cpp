@@ -471,6 +471,9 @@ bool GUIChatConsole::OnEvent(const SEvent& event)
 		}
 		else if(event.KeyInput.Key == KEY_RETURN)
 		{
+			// Avoid triggering actions when releasing the key
+			m_menumgr->inhibitKeyPress(event.KeyInput.Key);
+
 			prompt.addToHistory(prompt.getLine());
 			std::wstring text = prompt.replace(L"");
 			m_client->typeChatMessage(text);
@@ -654,8 +657,7 @@ bool GUIChatConsole::OnEvent(const SEvent& event)
 			// Tab or Shift-Tab pressed
 			// Nick completion
 			auto names = m_client->getConnectedPlayerNames();
-			bool backwards = event.KeyInput.Shift;
-			prompt.nickCompletion(names, backwards);
+			prompt.nickCompletion(names);
 			return true;
 		}
 

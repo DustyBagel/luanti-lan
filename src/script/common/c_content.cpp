@@ -38,6 +38,14 @@ struct EnumString es_TileAnimationType[] =
 	{0, nullptr},
 };
 
+struct EnumString es_AlignStyle[] =
+{
+	{ALIGN_STYLE_NODE, "node"},
+	{ALIGN_STYLE_WORLD, "world"},
+	{ALIGN_STYLE_USER_DEFINED, "user"},
+	{0, nullptr},
+};
+
 struct EnumString es_ItemType[] =
 {
 	{ITEM_NONE, "none"},
@@ -244,6 +252,8 @@ void push_item_definition_full(lua_State *L, const ItemDefinition &i)
 	lua_setfield(L, -2, "wield_scale");
 	lua_pushinteger(L, i.stack_max);
 	lua_setfield(L, -2, "stack_max");
+	lua_pushnumber(L, i.range);
+	lua_setfield(L, -2, "range");
 	lua_pushboolean(L, i.usable);
 	lua_setfield(L, -2, "usable");
 	lua_pushboolean(L, i.liquids_pointable);
@@ -717,6 +727,59 @@ TileDef read_tiledef(lua_State *L, int index, u8 drawtype, bool special)
 }
 
 /******************************************************************************/
+static void push_tile_animation_params(lua_State *L, const TileAnimationParams &anim)
+{
+	lua_newtable(L);
+	lua_pushstring(L, enum_to_string(es_TileAnimationType, anim.type));
+	lua_setfield(L, -2, "type");
+	if (anim.type == TAT_VERTICAL_FRAMES) {
+		lua_pushnumber(L, anim.vertical_frames.aspect_w);
+		lua_setfield(L, -2, "aspect_w");
+		lua_pushnumber(L, anim.vertical_frames.aspect_h);
+		lua_setfield(L, -2, "aspect_h");
+		lua_pushnumber(L, anim.vertical_frames.length);
+		lua_setfield(L, -2, "length");
+	} else if (anim.type == TAT_SHEET_2D) {
+		lua_pushnumber(L, anim.sheet_2d.frames_w);
+		lua_setfield(L, -2, "frames_w");
+		lua_pushnumber(L, anim.sheet_2d.frames_h);
+		lua_setfield(L, -2, "frames_h");
+		lua_pushnumber(L, anim.sheet_2d.frame_length);
+		lua_setfield(L, -2, "frame_length");
+	}
+}
+
+/******************************************************************************/
+void push_tiledef(lua_State *L, const TileDef &def)
+{
+	if (def.name.empty()) {
+		lua_pushnil(L);
+		return;
+	}
+	lua_newtable(L);
+	lua_pushstring(L, def.name.c_str());
+	lua_setfield(L, -2, "name");
+	lua_pushboolean(L, def.backface_culling);
+	lua_setfield(L, -2, "backface_culling");
+	lua_pushboolean(L, def.tileable_horizontal);
+	lua_setfield(L, -2, "tileable_horizontal");
+	lua_pushboolean(L, def.tileable_vertical);
+	lua_setfield(L, -2, "tileable_vertical");
+	if (def.has_color) {
+		push_ARGB8(L, def.color);
+		lua_setfield(L, -2, "color");
+	}
+	lua_pushstring(L, enum_to_string(es_AlignStyle, def.align_style));
+	lua_setfield(L, -2, "align_style");
+	lua_pushnumber(L, def.scale);
+	lua_setfield(L, -2, "scale");
+	if (def.animation.type != TAT_NONE) {
+		push_tile_animation_params(L, def.animation);
+		lua_setfield(L, -2, "animation");
+	}
+}
+
+/******************************************************************************/
 void read_content_features(lua_State *L, ContentFeatures &f, int index)
 {
 	if(index < 0)
@@ -1044,8 +1107,6 @@ void push_content_features(lua_State *L, const ContentFeatures &c)
 	std::string drawtype(enum_to_string(ScriptApiNode::es_DrawType, c.drawtype));
 	std::string liquid_type(enum_to_string(ScriptApiNode::es_LiquidType, c.liquid_type));
 
-	/* Missing "tiles" because I don't see a usecase (at least not yet). */
-
 	lua_newtable(L);
 	lua_pushboolean(L, c.has_on_construct);
 	lua_setfield(L, -2, "has_on_construct");
@@ -1067,6 +1128,19 @@ void push_content_features(lua_State *L, const ContentFeatures &c)
 		lua_pushstring(L, c.mesh.c_str());
 		lua_setfield(L, -2, "mesh");
 	}
+
+	const auto push_tiles = [&](const char *name, const TileDef *tiledefs, size_t count) {
+		lua_createtable(L, count, 0);
+		for (size_t i = 0; i < count; i++) {
+			push_tiledef(L, tiledefs[i]);
+			lua_rawseti(L, -2, i + 1);
+		}
+		lua_setfield(L, -2, name);
+	};
+	push_tiles("tiles", c.tiledef, 6);
+	push_tiles("overlay_tiles", c.tiledef_overlay, 6);
+	push_tiles("special_tiles", c.tiledef_special, CF_SPECIAL_COUNT);
+
 #if CHECK_CLIENT_BUILD()
 	if (c.visuals) {
 		push_ARGB8(L, c.visuals->minimap_color); // I know this is not set-able w/ register_node,
@@ -1077,17 +1151,19 @@ void push_content_features(lua_State *L, const ContentFeatures &c)
 	lua_setfield(L, -2, "visual_scale");
 	lua_pushnumber(L, c.alpha);
 	lua_setfield(L, -2, "alpha");
+	lua_pushstring(L, enum_to_string(ScriptApiNode::es_TextureAlphaMode, c.alpha));
+	lua_setfield(L, -2, "use_texture_alpha");
 	if (!c.palette_name.empty()) {
 		push_ARGB8(L, c.color);
 		lua_setfield(L, -2, "color");
 
 		lua_pushstring(L, c.palette_name.c_str());
-		lua_setfield(L, -2, "palette_name");
+		lua_setfield(L, -2, "palette");
 
 #if CHECK_CLIENT_BUILD()
 		if (c.visuals) {
 			push_palette(L, c.visuals->palette);
-			lua_setfield(L, -2, "palette");
+			lua_setfield(L, -2, "palette_colors");
 		}
 #endif
 	}
@@ -1231,6 +1307,10 @@ void push_nodebox(lua_State *L, const NodeBox &box)
 /******************************************************************************/
 void push_palette(lua_State *L, const std::vector<video::SColor> *palette)
 {
+	if (!palette) {
+		lua_pushnil(L);
+		return;
+	}
 	lua_createtable(L, palette->size(), 0);
 	int newTable = lua_gettop(L);
 	int index = 1;
@@ -1433,7 +1513,15 @@ ItemStack read_item(lua_State* L, int index, IItemDefManager *idef)
 	else if(lua_istable(L, index))
 	{
 		// Convert from table
-		std::string name = getstringfield_default(L, index, "name", "");
+		std::string name;
+		if (!getstringfield(L, index, "name", name)) {
+			log_deprecated(L, "ItemStack({ ... }) constructed without a 'name' field. "
+				"In a future engine version, this will result in an error.");
+		}
+		if (name.find_first_of(' ') != std::string::npos) {
+			log_deprecated(L, "ItemStack({ ... }) constructed with 'name' containing space characters. "
+				"In a future engine version, this will result in an error.");
+		}
 		int count = getintfield_default(L, index, "count", 1);
 		int wear = getintfield_default(L, index, "wear", 0);
 
@@ -1453,7 +1541,7 @@ ItemStack read_item(lua_State* L, int index, IItemDefManager *idef)
 				std::string key = lua_tostring(L, -2);
 				size_t value_len;
 				const char *value_cs = lua_tolstring(L, -1, &value_len);
-				std::string value(value_cs, value_len);
+				std::string_view value(value_cs, value_len);
 				istack.metadata.setString(key, value);
 				lua_pop(L, 1); // removes value, keeps key for next iteration
 			}
@@ -2040,12 +2128,11 @@ std::vector<ItemStack> read_items(lua_State *L, int index, IGameDef *gdef)
 /******************************************************************************/
 void luaentity_get(lua_State *L, u16 id)
 {
-	// Get luaentities[i]
+	// Get core.luaentities[i]
 	lua_getglobal(L, "core");
 	lua_getfield(L, -1, "luaentities");
 	luaL_checktype(L, -1, LUA_TTABLE);
-	lua_pushinteger(L, id);
-	lua_gettable(L, -2);
+	lua_rawgeti(L, -1, id);
 	lua_remove(L, -2); // Remove luaentities
 	lua_remove(L, -2); // Remove core
 }
@@ -2155,6 +2242,7 @@ static int push_json_value_getdepth(const Json::Value &value)
 		maxdepth = std::max(push_json_value_getdepth(it), maxdepth);
 	return maxdepth + 1;
 }
+
 // Recursive function to convert JSON --> Lua table
 static bool push_json_value_helper(lua_State *L, const Json::Value &value,
 		int nullindex)
@@ -2241,10 +2329,10 @@ void read_json_value(lua_State *L, Json::Value &root, int index, u16 max_depth)
 			 * Compare against [-2^63, 2^63) interval instead of [-2^63, 2^63 - 1]
 			 */
 #ifdef JSON_HAS_INT64
-			using IntType = s64;
+			using IntType = Json::Int64;
 			constexpr lua_Number min_val = -0x1p63;
 #else
-			using IntType = s32;
+			using IntType = Json::Int;
 			constexpr lua_Number min_val = -0x1p31;
 #endif
 			// cast integers to an integer type so they show up as "1234" instead of "1234.0"
@@ -2256,7 +2344,11 @@ void read_json_value(lua_State *L, Json::Value &root, int index, u16 max_depth)
 	} else if (type == LUA_TSTRING) {
 		size_t len;
 		const char *str = lua_tolstring(L, index, &len);
+#ifdef JSONCPP_HAS_STRING_VIEW
+		root = std::string_view(str, len);
+#else
 		root = std::string(str, len);
+#endif
 	} else if (type == LUA_TTABLE) {
 		// Reserve two slots for key and value.
 		lua_checkstack(L, 2);
@@ -2274,17 +2366,23 @@ void read_json_value(lua_State *L, Json::Value &root, int index, u16 max_depth)
 					throw SerializationError("Can't mix array and object values in JSON");
 				} else if (key < 1) {
 					throw SerializationError("Can't use zero-based or negative indexes in JSON");
-				} else if (floor(key) != key) {
-					throw SerializationError("Can't use indexes with a fractional part in JSON");
+				} else if (std::floor(key) != key) {
+					throw SerializationError("Can't use indices with a fractional part in JSON");
 				}
-				root[(Json::ArrayIndex) key - 1] = value;
+				root[static_cast<Json::ArrayIndex>(key) - 1] = std::move(value);
 			} else if (keytype == LUA_TSTRING) {
 				if (roottype != Json::nullValue && roottype != Json::objectValue) {
 					throw SerializationError("Can't mix array and object values in JSON");
 				}
-				root[lua_tostring(L, -1)] = value;
+				size_t len;
+				const char *str = lua_tolstring(L, -1, &len);
+#ifdef JSONCPP_HAS_STRING_VIEW
+				root[std::string_view(str, len)] = std::move(value);
+#else
+				root[std::string(str, len)] = std::move(value);
+#endif
 			} else {
-				throw SerializationError("Lua key to convert to JSON is not a string or number");
+				throw SerializationError("Can't use non-string, non-integer indices in JSON");
 			}
 		}
 	} else if (type == LUA_TNIL) {
@@ -2338,8 +2436,7 @@ void push_objectRef(lua_State *L, const u16 id)
 	lua_getglobal(L, "core");
 	lua_getfield(L, -1, "object_refs");
 	luaL_checktype(L, -1, LUA_TTABLE);
-	lua_pushinteger(L, id);
-	lua_gettable(L, -2);
+	lua_rawgeti(L, -1, id);
 	assert(!lua_isnoneornil(L, -1));
 	lua_remove(L, -2); // object_refs
 	lua_remove(L, -2); // core

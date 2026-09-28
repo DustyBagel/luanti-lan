@@ -38,12 +38,16 @@ public:
 		PADDING,
 		FONT,
 		FONT_SIZE,
+		HALIGN,
+		VALIGN,
 		COLORS,
 		BORDERCOLORS,
 		BORDERWIDTHS,
 		SOUND,
 		SPACING,
 		SIZE,
+		EDITABLE,
+		// always keep these two at the end:
 		NUM_PROPERTIES,
 		NONE
 	};
@@ -105,6 +109,10 @@ public:
 			return FONT;
 		} else if (name == "font_size") {
 			return FONT_SIZE;
+		} else if (name == "halign") {
+			return HALIGN;
+		} else if (name == "valign") {
+			return VALIGN;
 		} else if (name == "colors") {
 			return COLORS;
 		} else if (name == "bordercolors") {
@@ -117,9 +125,10 @@ public:
 			return SPACING;
 		} else if (name == "size") {
 			return SIZE;
-		} else {
-			return NONE;
+		} else if (name == "editable") {
+			return EDITABLE;
 		}
+		return NONE;
 	}
 
 	std::string get(Property prop, std::string def) const
@@ -383,7 +392,7 @@ public:
 		for (size_t i = 0; i < NUM_PROPERTIES; i++) {
 			auto prop = (Property)i;
 			if (other.hasProperty(prop)) {
-				set(prop, other.get(prop, ""));
+				set(prop, other.properties[prop]);
 			}
 		}
 

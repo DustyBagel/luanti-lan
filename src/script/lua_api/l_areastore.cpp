@@ -74,8 +74,7 @@ static int deserialization_helper(lua_State *L, AreaStore *as,
 // garbage collector
 int LuaAreaStore::gc_object(lua_State *L)
 {
-	LuaAreaStore *o = *(LuaAreaStore **)(lua_touserdata(L, 1));
-	delete o;
+	delete takeObjectForGC<LuaAreaStore>(L);
 	return 0;
 }
 
@@ -147,7 +146,10 @@ int LuaAreaStore::l_get_areas_in_area(lua_State *L)
 	}
 	std::vector<Area *> res;
 
-	ast->getAreasInArea(&res, minp, maxp, accept_overlap);
+	if (accept_overlap)
+		ast->getOverlappingAreas(&res, minp, maxp);
+	else
+		ast->getContainingAreas(&res, minp, maxp);
 	push_areas(L, res, include_corners, include_data);
 
 	return 1;

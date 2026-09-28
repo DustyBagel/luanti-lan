@@ -350,6 +350,7 @@ void ClientMediaDownloader::remoteMediaReceived(
 			filestatus->received = true;
 			assert(m_uncached_received_count < m_uncached_count);
 			m_uncached_received_count++;
+			m_received_file_size += fetch_result.data.size();
 		}
 	}
 }
@@ -467,7 +468,7 @@ void ClientMediaDownloader::startConventionalTransfers(Client *client)
 		}
 		assert((s32) file_requests.size() ==
 				m_uncached_count - m_uncached_received_count);
-		client->request_media(file_requests);
+		client->requestMedia(file_requests);
 	}
 }
 
@@ -501,6 +502,7 @@ bool ClientMediaDownloader::conventionalTransferDone(
 	filestatus->received = true;
 	assert(m_uncached_received_count < m_uncached_count);
 	m_uncached_received_count++;
+	m_received_file_size += data.size();
 
 	// Check that received file matches announced checksum
 	// If so, load it
@@ -755,5 +757,5 @@ void SingleMediaDownloader::startConventionalTransfer(Client *client)
 {
 	std::vector<std::string> requests;
 	requests.emplace_back(m_file_name);
-	client->request_media(requests);
+	client->requestMedia(requests);
 }

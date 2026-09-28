@@ -2,17 +2,15 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 // Copyright (C) 2013 celeron55, Perttu Ahola <celeron55@gmail.com>
 
+#include "guiFormSpecMenu.h"
 
 #include <cstdlib>
 #include <algorithm>
 #include <iterator>
 #include <limits>
-#include "guiFormSpecMenu.h"
-#include "EGUIElementTypes.h"
 #include "itemdef.h"
 #include "gamedef.h"
 #include "client/keycode.h"
-#include "gui/guiTable.h"
 #include <IGUIButton.h>
 #include <IGUICheckBox.h>
 #include <IGUIComboBox.h>
@@ -21,6 +19,8 @@
 #include <IGUITabControl.h>
 #include <IGUIImage.h>
 #include <AnimatedMeshSceneNode.h>
+#include <EGUIElementTypes.h>
+#include <dimension2d.h>
 #include "client/renderingengine.h"
 #include "log.h"
 #include "drawItemStack.h"
@@ -48,6 +48,8 @@
 #include "guiItemImage.h"
 #include "guiScrollContainer.h"
 #include "guiScene.h"
+#include "gui/StyleSpec.h"
+#include "gui/guiTable.h"
 
 #define MY_CHECKPOS(a,b)													\
 	if (v_pos.size() != 2) {												\
@@ -75,7 +77,34 @@ constexpr s32 ID_PROCEED_BTN = 257;
 /*
 	GUIFormSpecMenu
 */
-static unsigned int font_line_height(gui::IGUIFont *font)
+
+static EGUI_ALIGNMENT get_halign(const StyleSpec &style)
+{
+	std::string halign_str = style.get(StyleSpec::HALIGN, "left");
+
+	if (halign_str == "center")
+		return gui::EGUIA_CENTER;
+	if (halign_str == "right")
+		return gui::EGUIA_LOWERRIGHT;
+
+	return gui::EGUIA_UPPERLEFT; // default left
+}
+
+static EGUI_ALIGNMENT get_valign(const StyleSpec &style)
+{
+	std::string valign_str = style.get(StyleSpec::VALIGN, "top");
+
+	if (valign_str == "center")
+		return gui::EGUIA_CENTER;
+	if (valign_str == "bottom")
+		return gui::EGUIA_LOWERRIGHT;
+
+	return gui::EGUIA_UPPERLEFT; // default top
+}
+
+/// @warning legacy only, do not use in new code!
+/// @note use `font->getDimension(text)` instead
+static unsigned int legacy_font_line_height(gui::IGUIFont *font)
 {
 	return font->getDimension(L"Ay").Height + font->getKerning(L'A').Y;
 }
@@ -585,10 +614,7 @@ void GUIFormSpecMenu::parseCheckbox(parserData* data, const std::string &element
 
 	MY_CHECKPOS("checkbox",0);
 
-	bool fselected = false;
-
-	if (selected == "true")
-		fselected = true;
+	bool fselected = is_yes(selected);
 
 	std::wstring wlabel = translate_string(utf8_to_wide(unescape_string(label)));
 	const core::dimension2d<u32> label_size = m_font->getDimension(wlabel.c_str());
@@ -631,11 +657,13 @@ void GUIFormSpecMenu::parseCheckbox(parserData* data, const std::string &element
 
 	auto style = getDefaultStyleForElement("checkbox", name);
 
-	spec.sound = style.get(StyleSpec::Property::SOUND, "");
+	spec.sound = style.get(StyleSpec::SOUND, "");
 
 	e->setNotClipped(style.getBool(StyleSpec::NOCLIP, false));
 
-	if (spec.fname == m_focused_element) {
+	if (!style.getBool(StyleSpec::EDITABLE, true)) {
+		e->setEnabled(false);
+	} else if (spec.fname == m_focused_element) {
 		Environment->setFocus(e);
 	}
 
@@ -1394,11 +1422,14 @@ void GUIFormSpecMenu::parseDropDown(parserData* data, const std::string &element
 	spec.ftype = f_DropDown;
 	spec.send = true;
 
-	//now really show list
+	auto style = getDefaultStyleForElement("dropdown", name);
+
 	gui::IGUIComboBox *e = Environment->addComboBox(rect, data->current_parent,
 			spec.fid);
 
-	if (spec.fname == m_focused_element) {
+	if (!style.getBool(StyleSpec::EDITABLE, true)) {
+		e->setEnabled(false);
+	} else if (spec.fname == m_focused_element) {
 		Environment->setFocus(e);
 	}
 
@@ -1410,19 +1441,15 @@ void GUIFormSpecMenu::parseDropDown(parserData* data, const std::string &element
 	if (!str_initial_selection.empty())
 		e->setSelected(stoi(str_initial_selection)-1);
 
-	auto style = getDefaultStyleForElement("dropdown", name);
-
-	spec.sound = style.get(StyleSpec::Property::SOUND, "");
+	spec.sound = style.get(StyleSpec::SOUND, "");
 
 	e->setNotClipped(style.getBool(StyleSpec::NOCLIP, false));
 
 	m_fields.push_back(spec);
 
-	m_dropdowns.emplace_back(spec, std::vector<std::string>());
-	std::vector<std::string> &values = m_dropdowns.back().second;
-	for (const std::string &item : items) {
-		values.push_back(unescape_string(item));
-	}
+	for (auto &item : items)
+		item = unescape_string(item);
+	m_dropdowns.emplace_back(spec, std::move(items));
 }
 
 void GUIFormSpecMenu::parseFieldEnterAfterEdit(parserData *data, const std::string &element)
@@ -1491,11 +1518,13 @@ void GUIFormSpecMenu::parsePwdField(parserData* data, const std::string &element
 	gui::IGUIEditBox *e = Environment->addEditBox(0, rect, true,
 			data->current_parent, spec.fid);
 
-	if (spec.fname == m_focused_element) {
+	auto style = getDefaultStyleForElement("pwdfield", name, "field");
+
+	if (!style.getBool(StyleSpec::EDITABLE, true)) {
+		e->setWritable(false);
+	} else if (spec.fname == m_focused_element) {
 		Environment->setFocus(e);
 	}
-
-	auto style = getDefaultStyleForElement("pwdfield", name, "field");
 
 	if (label.length() >= 1) {
 		int font_height = g_fontengine->getTextHeight();
@@ -1529,10 +1558,11 @@ void GUIFormSpecMenu::parsePwdField(parserData* data, const std::string &element
 void GUIFormSpecMenu::createTextField(parserData *data, FieldSpec &spec,
 	core::rect<s32> &rect, bool is_multiline)
 {
+	auto style = getDefaultStyleForElement(is_multiline ? "textarea" : "field", spec.fname);
+
 	bool is_editable = !spec.fname.empty();
 	if (!is_editable && !is_multiline) {
 		// spec field id to 0, this stops submit searching for a value that isn't there
-		auto style = getDefaultStyleForElement("field");
 		addLabel(EnrichedString(spec.flabel.c_str()), rect, data->current_parent, style);
 		return;
 	}
@@ -1545,26 +1575,40 @@ void GUIFormSpecMenu::createTextField(parserData *data, FieldSpec &spec,
 		spec.flabel.swap(spec.fdefault);
 	}
 
+	// do this after the compat code above
+	is_editable &= style.getBool(StyleSpec::EDITABLE, true);
+
 	gui::IGUIEditBox *e = nullptr;
 	if (is_multiline) {
 		e = new GUIEditBoxWithScrollBar(spec.fdefault.c_str(), true, Environment,
 				data->current_parent, spec.fid, rect, m_tsrc, is_editable, true);
-	} else if (is_editable) {
+	} else {
 		e = Environment->addEditBox(spec.fdefault.c_str(), rect, true,
 				data->current_parent, spec.fid);
 		e->grab();
+		e->setWritable(is_editable);
 	}
 
-	auto style = getDefaultStyleForElement(is_multiline ? "textarea" : "field", spec.fname);
-
-	if (e) {
+	{
 		if (is_editable && spec.fname == m_focused_element)
 			Environment->setFocus(e);
+
+		EGUI_ALIGNMENT halign = get_halign(style);
+		EGUI_ALIGNMENT valign = gui::EGUIA_UPPERLEFT; // default for field[]
 
 		if (is_multiline) {
 			e->setMultiLine(true);
 			e->setWordWrap(true);
-			e->setTextAlignment(gui::EGUIA_UPPERLEFT, gui::EGUIA_UPPERLEFT);
+
+			valign = get_valign(style);
+
+			// calculates if a scrollbar is needed (the same way as in irr/src/CGUIEditBox.cpp at the end of the file).
+			// basically if the height of the wrapped text exceeds the textarea height,
+			// force top alignment to prevent text being cut off vertically
+			core::dimension2du text_dim = e->getTextDimension();
+			if (text_dim.Height > (u32)rect.getHeight()) {
+				valign = gui::EGUIA_UPPERLEFT;
+			}
 		} else {
 			SEvent evt;
 			evt.EventType            = EET_KEY_INPUT_EVENT;
@@ -1576,10 +1620,11 @@ void GUIFormSpecMenu::createTextField(parserData *data, FieldSpec &spec,
 			e->OnEvent(evt);
 		}
 
+		e->setTextAlignment(halign, valign);
 		e->setNotClipped(style.getBool(StyleSpec::NOCLIP, false));
 		e->setOverrideColor(style.getColor(StyleSpec::TEXTCOLOR, video::SColor(0xFFFFFFFF)));
 		bool border = style.getBool(StyleSpec::BORDER, true);
-		e->setDrawBorder(border);
+		e->setDrawBorder(border && !spec.fname.empty());
 		e->setDrawBackground(border);
 		e->setOverrideFont(style.getFont());
 
@@ -1662,13 +1707,10 @@ void GUIFormSpecMenu::parseTextArea(parserData* data, std::vector<std::string>& 
 
 		geom.X = (stof(v_geom[0]) * spacing.X) - (spacing.X - imgsize.X);
 
-		if (type == "textarea")
-		{
+		if (type == "textarea") {
 			geom.Y = (stof(v_geom[1]) * (float)imgsize.Y) - (spacing.Y-imgsize.Y);
 			pos.Y += m_btn_height;
-		}
-		else
-		{
+		} else {
 			pos.Y += (stof(v_geom[1]) * (float)imgsize.Y)/2;
 			pos.Y -= m_btn_height;
 			geom.Y = m_btn_height*2;
@@ -1935,6 +1977,9 @@ void GUIFormSpecMenu::parseLabel(parserData* data, const std::string &element)
 	if (!font)
 		font = m_font;
 
+	EGUI_ALIGNMENT halign = get_halign(style);
+	EGUI_ALIGNMENT valign = get_valign(style);
+
 	auto add_label = [&](core::rect<s32> rect, const EnrichedString &text,
 			EGUI_ALIGNMENT align_h, EGUI_ALIGNMENT align_v, bool word_wrap) {
 		FieldSpec spec(
@@ -2013,7 +2058,7 @@ void GUIFormSpecMenu::parseLabel(parserData* data, const std::string &element)
 				pos.X + geom.X,
 				pos.Y + geom.Y);
 
-		add_label(rect, str, gui::EGUIA_UPPERLEFT, gui::EGUIA_UPPERLEFT, true);
+		add_label(rect, str, halign, valign, true);
 	}
 }
 
@@ -2025,8 +2070,16 @@ void GUIFormSpecMenu::parseVertLabel(parserData* data, const std::string &elemen
 
 	std::vector<std::string> v_pos = split(parts[0], ',');
 
+	MY_CHECKPOS("vertlabel", 1);
+
+	auto style = getDefaultStyleForElement("vertlabel", "", "label");
+	gui::IGUIFont *font = style.getFont();
+	if (!font)
+		font = m_font;
+
 	// Use EnrichedString so color escapes and formatting are preserved
-	EnrichedString etext(unescape_string(utf8_to_wide(parts[1])));
+	EnrichedString etext(unescape_string(utf8_to_wide(parts[1])),
+			style.getColor(StyleSpec::TEXTCOLOR, video::SColor(0xFFFFFFFF)));
 
 	// Build vertical text (one character per line)
 	EnrichedString vlabel;
@@ -2036,13 +2089,7 @@ void GUIFormSpecMenu::parseVertLabel(parserData* data, const std::string &elemen
 		vlabel += etext.substr(i, 1);
 		vlabel.addCharNoColor(L'\n');
 	}
-
-	MY_CHECKPOS("vertlabel", 1);
-
-	auto style = getDefaultStyleForElement("vertlabel", "", "label");
-	gui::IGUIFont *font = style.getFont();
-	if (!font)
-		font = m_font;
+	const auto text_dim = font->getDimension(vlabel.c_str());
 
 	v2s32 pos;
 	core::rect<s32> rect;
@@ -2053,9 +2100,7 @@ void GUIFormSpecMenu::parseVertLabel(parserData* data, const std::string &elemen
 		// Vertlabels are positioned by center, not left.
 		pos.X -= imgsize.X / 2;
 
-		rect = core::rect<s32>(pos.X, pos.Y,
-			pos.X + imgsize.X,
-			pos.Y + font_line_height(font) * char_count);
+		rect = core::rect<s32>(pos, core::dimension2di(imgsize.X, text_dim.Height));
 
 	} else {
 		pos = getElementBasePos(&v_pos);
@@ -2065,7 +2110,7 @@ void GUIFormSpecMenu::parseVertLabel(parserData* data, const std::string &elemen
 		rect = core::rect<s32>(
 			pos.X, pos.Y + ((imgsize.Y / 2) - m_btn_height),
 			pos.X + 15, pos.Y +
-				font_line_height(font) * (char_count + 1) +
+				legacy_font_line_height(font) * (char_count + 1) +
 				((imgsize.Y / 2) - m_btn_height));
 	}
 
@@ -2080,6 +2125,7 @@ void GUIFormSpecMenu::parseVertLabel(parserData* data, const std::string &elemen
 	);
 
 	gui::IGUIStaticText *e = addLabel(vlabel, rect, data->current_parent, style, false, spec.fid);
+	// Note: For real coordinates, the text precisely fits the rect, so the vertical alignment does not matter.
 	e->setTextAlignment(gui::EGUIA_CENTER, gui::EGUIA_CENTER);
 
 	m_fields.push_back(spec);
@@ -2504,6 +2550,23 @@ void GUIFormSpecMenu::parseListColors(parserData* data, const std::string &eleme
 		e->setSlotBorders(data->inventorylist_options.slotborder,
 				data->inventorylist_options.slotbordercolor);
 	}
+}
+
+void GUIFormSpecMenu::parseListImages(parserData* data, const std::string &element)
+{
+	std::vector<std::string> parts;
+	// Supports:
+	// listimages[<normal>;<hover>]
+	if (!precheckElement("listimages", element, 2, 2, parts))
+		return;
+
+	data->inventorylist_options.slotbgimg_n.grab(!parts[0].empty()
+			? m_tsrc->getTexture(unescape_string(parts[0]))
+			: nullptr);
+
+	data->inventorylist_options.slotbgimg_h.grab(!parts[1].empty()
+			? m_tsrc->getTexture(unescape_string(parts[1]))
+			: nullptr);
 }
 
 void GUIFormSpecMenu::parseTooltip(parserData* data, const std::string &element)
@@ -3075,6 +3138,7 @@ const std::unordered_map<std::string, std::function<void(GUIFormSpecMenu*, GUIFo
 		{"box",                    &GUIFormSpecMenu::parseBox},
 		{"bgcolor",                &GUIFormSpecMenu::parseBackgroundColor},
 		{"listcolors",             &GUIFormSpecMenu::parseListColors},
+		{"listimages",             &GUIFormSpecMenu::parseListImages},
 		{"tooltip",                &GUIFormSpecMenu::parseTooltip},
 		{"hypertip",               &GUIFormSpecMenu::parseHyperTip},
 		{"scrollbar",              &GUIFormSpecMenu::parseScrollBar},
@@ -3362,7 +3426,7 @@ void GUIFormSpecMenu::regenerateGui(v2u32 screensize)
 		// implicit "Proceed" button.  Use default font, and
 		// temporary form size which will be recalculated below.
 		m_font = g_fontengine->getFont();
-		m_btn_height = font_line_height(m_font) * 0.875;
+		m_btn_height = legacy_font_line_height(m_font) * 0.875;
 		DesiredRect = core::rect<s32>(
 			(s32)((f32)mydata.screensize.X * mydata.offset.X) - (s32)(mydata.anchor.X * 580.0),
 			(s32)((f32)mydata.screensize.Y * mydata.offset.Y) - (s32)(mydata.anchor.Y * 300.0),
@@ -3485,6 +3549,25 @@ void GUIFormSpecMenu::regenerateGui(v2u32 screensize)
 		// Only set previous form name if we purposefully showed a new formspec
 		m_last_formname = m_text_dst->m_formname;
 		m_is_form_regenerated = true;
+	}
+
+	// Restore hover state
+	if (m_pointer.X != -1) {
+		SEvent event;
+		event.EventType = EET_MOUSE_INPUT_EVENT;
+		event.MouseInput.Event = EMIE_MOUSE_MOVED;
+		event.MouseInput.X = m_pointer.X;
+		event.MouseInput.Y = m_pointer.Y;
+
+		Environment->postEventFromUser(event);
+
+		// explicitly update inventory lists
+		for (GUIInventoryList *list : m_inventorylists) {
+			s32 hovered = list->getItemIndexAtPos(m_pointer);
+			if (hovered != -1) {
+				list->setHoveredIndex(hovered);
+			}
+		}
 	}
 }
 
@@ -4486,7 +4569,7 @@ bool GUIFormSpecMenu::OnEvent(const SEvent& event)
 		if (event.KeyInput.PressedDown &&
 				(keySettingHasMatch("keymap_screenshot", kp))) {
 			if (m_client) {
-				m_client->makeScreenshot();
+				m_client->requestScreenshot();
 			} else if (m_text_dst) { // in main menu
 				m_text_dst->requestScreenshot();
 			}

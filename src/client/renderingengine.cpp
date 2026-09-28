@@ -261,11 +261,6 @@ void RenderingEngine::setResizable(bool resize)
 	m_device->setResizable(resize);
 }
 
-void RenderingEngine::removeMesh(const scene::IMesh* mesh)
-{
-	m_device->getSceneManager()->getMeshCache()->removeMesh(mesh);
-}
-
 void RenderingEngine::cleanupMeshCache()
 {
 	auto mesh_cache = m_device->getSceneManager()->getMeshCache();
@@ -296,7 +291,7 @@ bool RenderingEngine::setWindowIcon()
 */
 void RenderingEngine::draw_load_screen(const std::wstring &text,
 		gui::IGUIEnvironment *guienv, ITextureSource *tsrc, float dtime,
-		int percent, float *indef_pos)
+		int percent, float *indef_pos, const std::wstring &bottom_text)
 {
 	v2u32 screensize = getWindowSize();
 
@@ -326,6 +321,7 @@ void RenderingEngine::draw_load_screen(const std::wstring &text,
 		percent_min = std::max((int) *indef_pos - 40, 0);
 	}
 	// draw progress bar
+	u32 imgW = 0, imgH = 0;
 	if ((percent_min >= 0) && (percent_max <= 100)) {
 		video::ITexture *progress_img = tsrc->getTexture("progress_bar.png");
 		video::ITexture *progress_img_bg =
@@ -337,13 +333,13 @@ void RenderingEngine::draw_load_screen(const std::wstring &text,
 					progress_img_bg->getSize();
 			float density = g_settings->getFloat("gui_scaling", 0.5f, 20.0f) *
 					getDisplayDensity();
-			u32 imgW = rangelim(img_size.Width, 200, 600) * density;
-			u32 imgH = rangelim(img_size.Height, 24, 72) * density;
+			imgW = rangelim(img_size.Width, 200, 600) * density;
+			imgH = rangelim(img_size.Height, 24, 72) * density;
 #else
 			const core::dimension2d<u32> img_size(256, 48);
 			float imgRatio = (float)img_size.Height / img_size.Width;
-			u32 imgW = screensize.X / 2.2f;
-			u32 imgH = floor(imgW * imgRatio);
+			imgW = screensize.X / 2.2f;
+			imgH = floor(imgW * imgRatio);
 #endif
 			v2s32 img_pos((screensize.X - imgW) / 2,
 					(screensize.Y - imgH) / 2);
@@ -367,9 +363,28 @@ void RenderingEngine::draw_load_screen(const std::wstring &text,
 		}
 	}
 
+	gui::IGUIStaticText *gui_bottom_text = nullptr;
+	if (!bottom_text.empty()) {
+		auto line_height = g_fontengine->getLineHeight();
+		const v2s32 bottom_textsize = v2s32::from(v2u32(
+				g_fontengine->getFont()->getDimension(bottom_text.c_str())));
+		s32 padding = line_height * 0.5f;
+
+		v2s32 offset(
+			imgW == 0 ? bottom_textsize.X * -0.5f : imgW * -0.5f + padding,
+			std::max<s32>(imgH, textsize.Y) * 0.5f + padding
+		);
+		v2s32 pos = center + offset;
+
+		core::rect<s32> rect(pos, pos + bottom_textsize);
+		gui_bottom_text = gui::StaticText::add(guienv, bottom_text, rect, false, false);
+	}
+
 	guienv->drawAll();
 	driver->endScene();
 	guitext->remove();
+	if (gui_bottom_text)
+		gui_bottom_text->remove();
 }
 
 std::vector<video::E_DRIVER_TYPE> RenderingEngine::getSupportedVideoDrivers()

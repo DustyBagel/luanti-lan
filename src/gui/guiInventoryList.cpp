@@ -69,13 +69,59 @@ void GUIInventoryList::draw()
 	m_already_warned = false;
 
 	video::IVideoDriver *driver = Environment->getVideoDriver();
+
 	Client *client = m_fs_menu->getClient();
 	const ItemSpec *selected_item = m_fs_menu->getSelectedItem();
+	const s32 selected_index = selected_item
+				&& m_invmgr->getInventory(selected_item->inventoryloc) == inv
+				&& selected_item->listname == m_listname
+			? selected_item->i : -1;
 
-	core::rect<s32> imgrect(0, 0, m_slot_size.X, m_slot_size.Y);
-	v2s32 base_pos = AbsoluteRect.UpperLeftCorner;
+	std::vector<video::S3DVertex> vertices;
+	std::vector<u16> indices_2, indices_3;
+	const s32 count_slots = m_geom.X * m_geom.Y;
+	vertices.reserve(count_slots * 4);
+	indices_2.reserve(m_options.slotborder * count_slots * 8); // line strip (borders)
+	indices_3.reserve(count_slots * 6); // triangles (filled)
+
+	auto add_rectangle = [&vertices, &indices_2, &indices_3](
+			bool filled, video::SColor color, const core::rect<s32> &rect) {
+
+		const u16 prev_i = (u16)vertices.size();
+		if (filled) {
+			for (u16 i : { 0,1,2, 0,2,3 })
+				indices_3.emplace_back(prev_i + i);
+		} else {
+			for (u16 i : { 0,1, 1,2, 2,3, 3,0 })
+				indices_2.emplace_back(prev_i + i);
+		}
+
+		/*
+			0 --- 1
+			|     |
+			3 --- 2
+		*/
+		const auto min = rect.UpperLeftCorner;
+		const auto max = rect.LowerRightCorner;
+		vertices.emplace_back(min.X, min.Y - 1, 4, 0,0,0, color, 0,0);
+		vertices.emplace_back(max.X, min.Y - 1, 4, 0,0,0, color, 1,0);
+		vertices.emplace_back(max.X, max.Y - 0, 4, 0,0,0, color, 1,1);
+		vertices.emplace_back(min.X, max.Y - 0, 4, 0,0,0, color, 0,1);
+	};
 
 	const s32 list_size = (s32)ilist->getSize();
+
+	struct StackToDraw {
+		core::rect<s32> rect;
+		const ItemStack &item;
+		bool hovered;
+		bool selected;
+	};
+	std::vector<StackToDraw> stacks;
+	stacks.reserve(list_size);
+
+	core::rect<s32> imgrect(0, 0, m_slot_size.X, m_slot_size.Y);
+	imgrect += AbsoluteRect.UpperLeftCorner;
 
 	for (s32 i = 0; i < m_geom.X * m_geom.Y; i++) {
 		s32 item_i = i + m_start_item_i;
@@ -84,66 +130,49 @@ void GUIInventoryList::draw()
 
 		v2s32 p((i % m_geom.X) * m_slot_spacing.X,
 				(i / m_geom.X) * m_slot_spacing.Y);
-		core::rect<s32> rect = imgrect + base_pos + p;
+		const core::rect<s32> rect = imgrect + p;
+		core::rect<s32> rect_clip = rect;
+		rect_clip.clipAgainst(AbsoluteClippingRect);
 
-		if (!getAbsoluteClippingRect().isRectCollided(rect))
+		if (!rect_clip.isValid() || rect_clip.getArea() == 0)
 			continue; // out of (parent) clip area
 
-		const ItemStack &orig_item = ilist->getItem(item_i);
-		ItemStack item = orig_item;
+		bool selected = item_i == selected_index;
+		bool hovering = item_i == m_hovered_i;
 
-		bool selected = selected_item
-			&& m_invmgr->getInventory(selected_item->inventoryloc) == inv
-			&& selected_item->listname == m_listname
-			&& selected_item->i == item_i;
-		bool hovering = m_hovered_i == item_i;
-		ItemRotationKind rotation_kind = selected ? IT_ROT_SELECTED :
-			(hovering ? IT_ROT_HOVERED : IT_ROT_NONE);
+		if (hovering && m_options.slotbgimg_h) {
+			// the hovered slot
+			video::ITexture *tex = m_options.slotbgimg_h.get();
+			core::rect<s32> src(v2s32(), tex->getOriginalSize());
+			driver->draw2DImage(tex, rect_clip, src, &AbsoluteClippingRect, nullptr, true);
 
-		// layer 0
-		if (hovering) {
-			driver->draw2DRectangle(m_options.slotbg_h, rect, &AbsoluteClippingRect);
+		} else if (m_options.slotbgimg_n) {
+			// all other non-hovered slots
+			add_rectangle(true, video::SColor(255, 255, 255, 255), rect_clip);
+
 		} else {
-			driver->draw2DRectangle(m_options.slotbg_n, rect, &AbsoluteClippingRect);
+			add_rectangle(true, hovering ? m_options.slotbg_h : m_options.slotbg_n, rect_clip);
 		}
 
 		// Draw inv slot borders
 		if (m_options.slotborder) {
-			s32 x1 = rect.UpperLeftCorner.X;
-			s32 y1 = rect.UpperLeftCorner.Y;
-			s32 x2 = rect.LowerRightCorner.X;
-			s32 y2 = rect.LowerRightCorner.Y;
-			s32 border = 1;
-			core::rect<s32> clipping_rect = Parent ? Parent->getAbsoluteClippingRect()
-					: core::rect<s32>();
-			core::rect<s32> *clipping_rect_ptr = Parent ? &clipping_rect : nullptr;
-			driver->draw2DRectangle(m_options.slotbordercolor,
-				core::rect<s32>(v2s32(x1 - border, y1 - border),
-								v2s32(x2 + border, y1)), clipping_rect_ptr);
-			driver->draw2DRectangle(m_options.slotbordercolor,
-				core::rect<s32>(v2s32(x1 - border, y2),
-								v2s32(x2 + border, y2 + border)), clipping_rect_ptr);
-			driver->draw2DRectangle(m_options.slotbordercolor,
-				core::rect<s32>(v2s32(x1 - border, y1),
-								v2s32(x1, y2)), clipping_rect_ptr);
-			driver->draw2DRectangle(m_options.slotbordercolor,
-				core::rect<s32>(v2s32(x2, y1),
-								v2s32(x2 + border, y2)), clipping_rect_ptr);
+			core::rect<s32> rect_border = rect;
+			rect_border.UpperLeftCorner -= 1;
+			rect_border.clipAgainst(AbsoluteClippingRect);
+
+			add_rectangle(false, m_options.slotbordercolor, rect_border);
 		}
 
-		// layer 1
-		if (selected)
-			item.takeItem(m_fs_menu->getSelectedAmount());
+		const ItemStack &item = ilist->getItem(item_i);
+		if (item.empty())
+			continue;
 
-		if (!item.empty()) {
-			// Draw item stack
-			drawItemStack(driver, m_font, item, rect, &AbsoluteClippingRect,
-					client, rotation_kind);
-		}
+		// Delay drawing item stacks after slots because this clears the depth buffer.
+		stacks.emplace_back(StackToDraw{ rect, item, hovering, selected });
 
 		// Add hovering tooltip. The tooltip disappears if any item is selected,
 		// including the currently hovered one.
-		bool show_tooltip = !item.empty() && hovering && !selected_item;
+		bool show_tooltip = hovering && !selected_item;
 
 		if (RenderingEngine::getLastPointerType() == PointerType::Touch) {
 			// Touchscreen users cannot hover over an item without selecting it.
@@ -162,11 +191,58 @@ void GUIInventoryList::draw()
 		}
 
 		if (show_tooltip) {
-			std::string tooltip = orig_item.getDescription(client->idef());
+			std::string tooltip = item.getDescription(client->idef());
 			if (m_fs_menu->doTooltipAppendItemname())
-				tooltip += "\n[" + orig_item.name + "]";
+				tooltip += "\n[" + item.name + "]";
 			m_fs_menu->addHoveredItemTooltip(tooltip);
 		}
+	}
+
+	video::SMaterial mat = driver->getMaterial2D();
+
+	if (m_options.slotbgimg_n) {
+		mat.MaterialType = video::EMT_TRANSPARENT_ALPHA_CHANNEL;
+		mat.setTexture(0, m_options.slotbgimg_n.get());
+	} else {
+		mat.MaterialType = video::EMT_TRANSPARENT_VERTEX_ALPHA;
+		mat.setTexture(0, nullptr);
+	}
+
+	driver->setMaterial(mat);
+
+	driver->draw2DVertexPrimitiveList(
+		vertices.data(), vertices.size(),
+		indices_3.data(), indices_3.size() / 3,
+		video::EVT_STANDARD, scene::EPT_TRIANGLES, video::EIT_16BIT
+	);
+
+	mat.MaterialType = video::EMT_TRANSPARENT_VERTEX_ALPHA;
+	mat.setTexture(0, nullptr);
+	driver->setMaterial(mat);
+
+	driver->draw2DVertexPrimitiveList(
+		vertices.data(), vertices.size(),
+		indices_2.data(), indices_2.size() / 2,
+		video::EVT_STANDARD, scene::EPT_LINES, video::EIT_16BIT
+	);
+
+	// Draw items
+	for (const StackToDraw &stack : stacks) {
+		ItemRotationKind rotation_kind = stack.selected ? IT_ROT_SELECTED :
+				(stack.hovered ? IT_ROT_HOVERED : IT_ROT_NONE);
+
+		if (stack.selected) {
+			ItemStack remaining_item = stack.item;
+			remaining_item.takeItem(m_fs_menu->getSelectedAmount());
+			if (!remaining_item.empty()) {
+				drawItemStack(driver, m_font, remaining_item, stack.rect,
+						&AbsoluteClippingRect, client, rotation_kind);
+			}
+			continue;
+		}
+
+		drawItemStack(driver, m_font, stack.item, stack.rect,
+				&AbsoluteClippingRect, client, rotation_kind);
 	}
 
 	IGUIElement::draw();
@@ -192,6 +268,11 @@ bool GUIInventoryList::OnEvent(const SEvent &event)
 bool GUIInventoryList::isPointInside(const core::position2d<s32> &point) const
 {
 	return getItemIndexAtPos(point) != -1;
+}
+
+void GUIInventoryList::setHoveredIndex(s32 item_i)
+{
+	m_hovered_i = item_i;
 }
 
 s32 GUIInventoryList::getItemIndexAtPos(v2s32 p) const
